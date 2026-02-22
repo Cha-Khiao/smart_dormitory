@@ -1,42 +1,59 @@
+/* src/app/globals.css */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary-gradient: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+  --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ปรับแต่งพื้นหลังให้ดูมีมิติ ไม่ขาวแบนๆ */
+body[data-bs-theme="light"] {
+  background-color: #f8fafc;
 }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
+/* ปรับแต่งการ์ด (Card) ให้ดูโมเดิร์น */
+.card {
+  border-radius: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.hover-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+/* ปรับแต่งปุ่มหลัก (Primary Button) ให้มีชีวิตชีวา */
+.btn-primary {
+  background: var(--primary-gradient);
+  border: none;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+.btn-primary:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #2563eb 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+/* ปรับแต่ง Input ของฟอร์ม */
+.form-control, .form-select {
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+}
+
+.form-control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+/* ส่วนหัว Hero (กรอบต้อนรับขนาดใหญ่) */
+.hero-section {
+  background: var(--primary-gradient);
+  color: white;
+  border-radius: 24px;
+  padding: 4rem 2rem;
+  margin-bottom: 3rem;
+  box-shadow: 0 20px 40px rgba(59, 130, 246, 0.2);
 }
