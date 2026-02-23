@@ -38,6 +38,9 @@ export default function AdminLayout({
             <li className="nav-item">
               <a href="/admin/payments" className="nav-link text-body rounded hover-bg">💰 ตรวจสอบสลิป</a>
             </li>
+            <li className="nav-item">
+              <a href="/admin/billing" className="nav-link text-body rounded hover-bg">🧾 ออกบิล</a>
+            </li>
           </ul>
         </div>
 
