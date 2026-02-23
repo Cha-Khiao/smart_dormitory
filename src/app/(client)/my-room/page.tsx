@@ -8,13 +8,34 @@ import toast from "react-hot-toast";
 import Tesseract from "tesseract.js";
 
 // 🌟 ฟังก์ชันอัปโหลดสลิปไป Cloudinary (อย่าลืมเปลี่ยน Upload Preset ของคุณ)
+// 🌟 ฟังก์ชันอัปโหลดสลิปไป Cloudinary (เวอร์ชันป้องกันบั๊ก 100%)
 const uploadToCloudinary = async (file: File) => {
+  // 🚨 สำคัญมาก: ต้องเปลี่ยน 2 ค่านี้เป็นของ Cloudinary ของคุณจริงๆ
+  const CLOUD_NAME = "dosnpexmy"; 
+  const UPLOAD_PRESET = "smart-dormitory"; 
+
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("upload_preset", "your_preset_here"); // ใส่ Preset ของคุณ
-  const res = await fetch("https://api.cloudinary.com/v1_1/your_cloud_name/image/upload", { method: "POST", body: formData });
-  const data = await res.json();
-  return data.secure_url;
+  formData.append("upload_preset", UPLOAD_PRESET);
+
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { 
+      method: "POST", 
+      body: formData 
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      console.error("Cloudinary Error:", errorData);
+      throw new Error("ตั้งค่า Cloudinary ไม่ถูกต้อง");
+    }
+
+    const data = await res.json();
+    return data.secure_url; // คืนค่า URL ที่ใช้งานได้จริง
+  } catch (error) {
+    console.error("Upload failed:", error);
+    return null; // คืนค่า null ถ้าระบบพัง
+  }
 };
 
 export default function MyRoomPage() {
@@ -53,17 +74,19 @@ export default function MyRoomPage() {
     if (!slipFile || !selectedBill) return toast.error("กรุณาแนบสลิปการโอนเงิน");
 
     setIsSubmitting(true);
-    const toastId = toast.loading("กำลังตรวจสอบสลิปและส่งข้อมูล..."); // เปลี่ยนข้อความให้ดูไฮเทค
+    const toastId = toast.loading("กำลังอัปโหลดสลิป..."); 
 
     try {
-      // 1. อัปโหลดรูปไป Cloudinary (เหมือนเดิม)
+      // 1. อัปโหลดรูปขึ้น Cloudinary ทันที (ไม่เอา OCR มาหน่วงเครื่องลูกค้าแล้ว)
       const slipUrl = await uploadToCloudinary(slipFile);
 
-      // 🌟 2. Auto-OCR: แอบสแกนสลิปบนเครื่องลูกค้าเลย
-      toast.loading("กำลังประมวลผลข้อมูลการโอนเงิน...", { id: toastId });
-      const { data: { text: ocrText } } = await Tesseract.recognize(slipUrl, 'tha+eng');
+      if (!slipUrl) {
+        toast.error("อัปโหลดรูปไม่สำเร็จ", { id: toastId });
+        setIsSubmitting(false);
+        return; 
+      }
 
-      // 3. ส่งข้อมูลทั้งหมด (สลิป + ข้อความ OCR) ไปอัปเดตบิล
+      // 2. ส่งข้อมูลไปเซฟ (ไม่ต้องส่ง ocrText)
       const res = await fetch("/api/bills", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -71,26 +94,25 @@ export default function MyRoomPage() {
           id: selectedBill._id, 
           status: "paid", 
           paymentMethod, 
-          slipUrl,
-          ocrText // 🌟 ส่งข้อความที่สแกนได้ไปให้แอดมิน
+          slipUrl 
         })
       });
 
       if (res.ok) {
-        // 4. สื่อสารกลับไปที่แชทแอดมิน
+        // 3. ทักแชทแอดมิน
         await fetch("/api/messages", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             bookingId: selectedBill.bookingId, senderId: (session?.user as any).id, senderName: "System", senderRole: "customer",
-            text: `💸 แจ้งชำระเงินค่าห้องเดือน ${selectedBill.month} เรียบร้อยแล้ว ยอดชำระ: ${selectedBill.totalAmount.toLocaleString()} บาท \nดูสลิป: ${slipUrl}`
+            text: `💸 แจ้งชำระเงินค่าห้องเดือน ${selectedBill.month} ยอด: ${selectedBill.totalAmount.toLocaleString()} บาท \nดูสลิป: ${slipUrl}`
           })
         });
 
-        toast.success("แจ้งชำระเงินสำเร็จ! แอดมินจะตรวจสอบสลิปของคุณ", { id: toastId });
+        toast.success("แจ้งชำระเงินสำเร็จ!", { id: toastId });
         setSelectedBill(null); setSlipFile(null); fetchBills();
       }
     } catch (error) {
-      toast.error("เกิดข้อผิดพลาดในการอัปโหลดสลิป", { id: toastId });
+      toast.error("เกิดข้อผิดพลาด", { id: toastId });
     } finally {
       setIsSubmitting(false);
     }
