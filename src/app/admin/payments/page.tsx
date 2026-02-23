@@ -2,171 +2,215 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Tesseract from "tesseract.js";
+import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
+import Swal from "sweetalert2";
+import Tesseract from "tesseract.js"; // 🌟 นำเข้า Tesseract เหมือนที่คุณเคยทำผ่าน
 
 export default function AdminPaymentsPage() {
+  const { data: session } = useSession();
   const [payments, setPayments] = useState<any[]>([]);
-  const [selectedPayment, setSelectedPayment] = useState<any>(null); // สลิปที่เลือกตรวจสอบ
+  const [selectedPayment, setSelectedPayment] = useState<any>(null);
+  
+  // State สำหรับ OCR
   const [ocrText, setOcrText] = useState<string>("");
   const [extractedAmount, setExtractedAmount] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
 
-  // ดึงข้อมูลรายการสลิป
   const fetchPayments = async () => {
-    const res = await fetch("/api/payments");
-    const json = await res.json();
-    if (json.success) setPayments(json.data);
+    try {
+      const res = await fetch(`/api/bills?status=paid&t=${new Date().getTime()}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success) setPayments(json.data);
+    } catch (error) {
+      toast.error("ดึงข้อมูลรายการไม่สำเร็จ");
+    }
   };
 
   useEffect(() => {
     fetchPayments();
   }, []);
 
-  // เมื่อแอดมินคลิกเลือกสลิปจากตาราง
-  const handleSelectSlip = (payment: any) => {
-    setSelectedPayment(payment);
-    setOcrText("");
-    setExtractedAmount(null);
-    setProgress(0);
-  };
+  // ==========================================
+  // 🌟 พลังความฉลาด: สแกนอัตโนมัติเมื่อเลือกสลิป
+  // ==========================================
+  useEffect(() => {
+    const autoVerifySlip = async () => {
+      // ถ้าไม่มีสลิปที่เลือก หรือสลิปนี้เคยมี ocrText ที่สแกนเสร็จแล้ว ให้ข้ามไป
+      if (!selectedPayment || !selectedPayment.slipUrl || ocrText) return;
+      
+      setIsProcessing(true);
+      const toastId = toast.loading("AI กำลังสแกนสลิปอัตโนมัติ...");
 
-  // AI ตรวจสอบ
-  const verifySlip = async () => {
-    if (!selectedPayment) return;
-    setIsProcessing(true);
-    const toastId = toast.loading("AI กำลังตรวจสอบสลิป...");
+      try {
+        const result = await Tesseract.recognize(selectedPayment.slipUrl, 'tha+eng');
+        const rawText = result.data.text;
+        
+        setOcrText(rawText);
 
-    try {
-      const result = await Tesseract.recognize(selectedPayment.slipUrl, 'tha+eng', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100));
+        const amountMatch = rawText.match(/[\d,]+\.\d{2}/);
+        if (amountMatch) {
+          setExtractedAmount(amountMatch[0]);
+          toast.success(`สแกนเสร็จสิ้น พบยอด: ${amountMatch[0]} บาท`, { id: toastId });
+        } else {
+          toast.success("สแกนข้อความสำเร็จ แต่อาจหาตัวเลขยอดเงินไม่เจอ", { id: toastId });
         }
-      });
-      
-      const rawText = result.data.text;
-      setOcrText(rawText);
-
-      const amountMatch = rawText.match(/[\d,]+\.\d{2}/);
-      if (amountMatch) {
-        setExtractedAmount(amountMatch[0]);
-        toast.success(`พบยอดเงินโอน: ${amountMatch[0]} บาท`, { id: toastId });
-      } else {
-        toast.success("อ่านข้อความสำเร็จ แต่อาจหาตัวเลขยอดเงินไม่เจอ", { id: toastId });
+      } catch (error) {
+        toast.error("เกิดข้อผิดพลาดในการอ่านสลิป", { id: toastId });
+      } finally {
+        setIsProcessing(false);
       }
-    } catch (error) {
-      toast.error("เกิดข้อผิดพลาดในการอ่านสลิป", { id: toastId });
-    } finally {
-      setIsProcessing(false);
-    }
+    };
+
+    autoVerifySlip();
+  }, [selectedPayment]); // ทำงานอัตโนมัติทุกครั้งที่ selectedPayment เปลี่ยนค่า
+
+  // เมื่อแอดมินคลิกเลือกสลิปจากตาราง (เคลียร์ค่าเก่าออกให้หมด)
+  const handleSelectSlip = (payment: any) => {
+    if (selectedPayment?._id === payment._id) return; // ถ้าคลิกอันเดิมไม่ต้องทำอะไร
+    setOcrText(""); 
+    setExtractedAmount(null);
+    setSelectedPayment(payment);
   };
 
-  // อัปเดตสถานะ อนุมัติ/ปฏิเสธ
-  const updateStatus = async (status: string) => {
-    const toastId = toast.loading("กำลังอัปเดตสถานะ...");
-    try {
-      const res = await fetch("/api/payments", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedPayment._id, status })
-      });
-      const json = await res.json();
-      
-      if (json.success) {
-        toast.success("อัปเดตสถานะสำเร็จ", { id: toastId });
-        fetchPayments(); // โหลดตารางใหม่
-        setSelectedPayment(null); // เคลียร์หน้าจอ
+  // ✅ อนุมัติการชำระเงิน
+  const handleApprove = async () => {
+    Swal.fire({
+      title: "ยืนยันยอดถูกต้อง?",
+      text: `ห้อง ${selectedPayment.roomNumber} ยอดชำระ ${selectedPayment.totalAmount?.toLocaleString()} บาท`,
+      icon: "success",
+      showCancelButton: true,
+      confirmButtonColor: "#198754",
+      confirmButtonText: "✅ อนุมัติ"
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        const toastId = toast.loading("กำลังบันทึก...");
+        try {
+          const res = await fetch("/api/bills", {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: selectedPayment._id, status: "completed" })
+          });
+          if (res.ok) {
+            await fetch("/api/messages", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                bookingId: selectedPayment.bookingId, senderId: (session?.user as any)?.id, senderName: "System", senderRole: "admin",
+                text: `✅ แอดมินตรวจสอบยอดชำระเงินเดือน ${selectedPayment.month} เรียบร้อยแล้ว ขอบคุณครับ`
+              })
+            });
+            toast.success("อนุมัติสำเร็จ!", { id: toastId });
+            setSelectedPayment(null); fetchPayments();
+          }
+        } catch (error) { toast.error("เกิดข้อผิดพลาด", { id: toastId }); }
       }
-    } catch (error) {
-      toast.error("อัปเดตไม่สำเร็จ", { id: toastId });
-    }
+    });
+  };
+
+  // ❌ ปฏิเสธสลิป
+  const handleReject = async () => {
+    Swal.fire({
+      title: "ปฏิเสธสลิป?",
+      input: "text", inputPlaceholder: "ระบุเหตุผล...", icon: "warning",
+      showCancelButton: true, confirmButtonColor: "#dc3545", confirmButtonText: "❌ ปฏิเสธ",
+      inputValidator: (v) => !v ? "กรุณาระบุเหตุผล" : undefined
+    }).then(async (result) => {
+      if (result.isConfirmed && result.value) {
+        const toastId = toast.loading("กำลังส่งเรื่องกลับ...");
+        try {
+          const res = await fetch("/api/bills", {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: selectedPayment._id, status: "unpaid", slipUrl: "" })
+          });
+          if (res.ok) {
+            await fetch("/api/messages", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                bookingId: selectedPayment.bookingId, senderId: (session?.user as any)?.id, senderName: "System", senderRole: "admin",
+                text: `❌ การชำระเงินไม่ผ่าน\n📌 เหตุผล: ${result.value}\n(กรุณาแนบหลักฐานใหม่ที่เมนูห้องพักของฉัน)`
+              })
+            });
+            toast.success("ตีกลับเรียบร้อย", { id: toastId });
+            setSelectedPayment(null); fetchPayments();
+          }
+        } catch (error) { toast.error("เกิดข้อผิดพลาด", { id: toastId }); }
+      }
+    });
   };
 
   return (
-    <div className="container-fluid">
-      <h2 className="mb-4">ตรวจสอบสลิปชำระเงิน</h2>
-      
+    <div className="container-fluid py-4">
+      <h2 className="mb-4 fw-bold text-primary">🔎 ตรวจสอบสลิปชำระเงิน</h2>
       <div className="row">
-        {/* คอลัมน์ซ้าย: รายการสลิปที่รอดำเนินการ */}
+        
+        {/* รายการรอตรวจสอบ */}
         <div className="col-md-5 mb-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
-              <h5 className="card-title text-primary mb-3">รายการแจ้งชำระเงิน</h5>
-              <div className="list-group">
-                {payments.length === 0 ? (
-                  <p className="text-muted text-center mt-3">ไม่มีรายการใหม่</p>
-                ) : (
+          <div className="card shadow-sm border-0 h-100 rounded-4">
+            <div className="card-body p-4">
+              <h5 className="card-title text-dark fw-bold mb-4">รายการรอตรวจสอบ <span className="badge bg-warning text-dark ms-2 rounded-pill px-3">{payments.length}</span></h5>
+              <div className="list-group list-group-flush gap-2">
+                {payments.length === 0 ? <div className="text-muted text-center py-5 bg-light rounded-4">ไม่มีรายการใหม่</div> : 
                   payments.map((p) => (
-                    <button 
-                      key={p._id} 
-                      className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center ${selectedPayment?._id === p._id ? 'active' : ''}`}
-                      onClick={() => handleSelectSlip(p)}
-                    >
-                      <div>
-                        <strong>ห้อง: {p.roomNumber}</strong>
-                        <div className="small text-muted">เวลา: {new Date(p.createdAt).toLocaleString('th-TH')}</div>
+                    <button key={p._id} className={`list-group-item list-group-item-action border-0 rounded-4 p-3 shadow-sm ${selectedPayment?._id === p._id ? 'bg-primary text-white' : 'bg-light'}`} onClick={() => handleSelectSlip(p)}>
+                      <div className="d-flex justify-content-between">
+                        <strong className="fs-5">ห้อง {p.roomNumber}</strong>
+                        <span className="badge bg-warning text-dark">รอตรวจสอบ</span>
                       </div>
-                      <span className={`badge ${p.status === 'pending' ? 'bg-warning text-dark' : p.status === 'approved' ? 'bg-success' : 'bg-danger'}`}>
-                        {p.status.toUpperCase()}
-                      </span>
+                      <div className="small opacity-75 mt-1">เวลาส่ง: {new Date(p.updatedAt).toLocaleString('th-TH')}</div>
                     </button>
                   ))
-                )}
+                }
               </div>
             </div>
           </div>
         </div>
 
-        {/* คอลัมน์ขวา: แสดงสลิปและ AI */}
+        {/* แสดงผลการตรวจสอบ */}
         <div className="col-md-7 mb-4">
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
+          <div className="card shadow-sm border-0 h-100 rounded-4">
+            <div className="card-body p-4">
               {selectedPayment ? (
                 <>
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5 className="card-title text-success mb-0">ตรวจสอบข้อมูล (ห้อง {selectedPayment.roomNumber})</h5>
-                    {/* ปุ่มอนุมัติ / ปฏิเสธ */}
+                  <div className="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+                    <div>
+                      <h4 className="text-success fw-bold mb-1">ห้อง {selectedPayment.roomNumber}</h4>
+                      <div className="text-muted small">ยอดเรียกเก็บ: <strong className="text-danger fs-5">{selectedPayment.totalAmount?.toLocaleString()} ฿</strong></div>
+                    </div>
                     <div className="d-flex gap-2">
-                      <button className="btn btn-sm btn-outline-danger" onClick={() => updateStatus('rejected')}>❌ ปฏิเสธ</button>
-                      <button className="btn btn-sm btn-success" onClick={() => updateStatus('approved')}>✅ อนุมัติ</button>
+                      <button className="btn btn-outline-danger fw-bold rounded-pill px-4" onClick={handleReject}>❌ ปฏิเสธ</button>
+                      <button className="btn btn-success fw-bold rounded-pill px-4" onClick={handleApprove}>✅ อนุมัติ</button>
                     </div>
                   </div>
 
-                  <div className="row">
+                  <div className="row g-4">
                     <div className="col-md-6 text-center">
-                      <img 
-                        src={selectedPayment.slipUrl} 
-                        alt="Slip" 
-                        className="img-fluid rounded border shadow-sm mb-3"
-                        style={{ maxHeight: "350px", objectFit: "contain" }} 
-                      />
+                      <a href={selectedPayment.slipUrl} target="_blank" rel="noopener noreferrer">
+                        <img src={selectedPayment.slipUrl} alt="Slip" className="img-fluid rounded-4 border shadow-sm" style={{ maxHeight: "400px", objectFit: "contain" }} />
+                      </a>
                     </div>
+
                     <div className="col-md-6">
-                      <button 
-                        className="btn btn-primary w-100 py-2 mb-3" 
-                        onClick={verifySlip}
-                        disabled={isProcessing}
-                      >
-                        {isProcessing ? `กำลังวิเคราะห์... ${progress}%` : "🔍 สั่ง AI สแกนสลิปนี้"}
-                      </button>
-                      
-                      {extractedAmount && (
-                        <div className="alert alert-success mt-2 shadow-sm">
-                          <strong>💰 ยอดเงิน: </strong> <span className="fs-5 ms-1">{extractedAmount} บาท</span>
-                        </div>
-                      )}
-                      
-                      {ocrText && (
-                        <textarea className="form-control mt-2 bg-light text-muted" rows={6} readOnly value={ocrText} style={{ fontSize: "12px" }}></textarea>
+                      <h6 className="fw-bold text-primary mb-3">📝 ข้อมูลสแกน (OCR)</h6>
+                      {isProcessing ? (
+                        <div className="alert alert-info text-center py-4 rounded-4"><div className="spinner-border spinner-border-sm text-primary me-2"></div> กำลังให้ AI อ่านข้อความ...</div>
+                      ) : (
+                        <>
+                          {extractedAmount && (
+                            <div className="alert alert-success border-0 shadow-sm rounded-4 mb-3 d-flex align-items-center gap-2">
+                              <span className="fs-3">💰</span><div><div className="small opacity-75 fw-bold">ยอดโอนในสลิป:</div><div className="fs-5 fw-bold">{extractedAmount} บาท</div></div>
+                            </div>
+                          )}
+                          {ocrText ? (
+                            <div className="bg-light p-3 rounded-4 border text-dark small" style={{ whiteSpace: "pre-wrap", maxHeight: "250px", overflowY: "auto", fontFamily: "monospace" }}>{ocrText}</div>
+                          ) : (
+                            <div className="alert alert-warning border-0 rounded-4 py-3 small text-center text-dark">ไม่สามารถอ่านข้อความได้ <br/>(แอดมินต้องตรวจสอบด้วยตาเปล่า)</div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
                 </>
               ) : (
-                <div className="d-flex align-items-center justify-content-center h-100 text-muted">
-                  คลิกเลือกรายการสลิปด้านซ้ายเพื่อตรวจสอบ
-                </div>
+                <div className="d-flex align-items-center justify-content-center h-100 text-muted">คลิกเลือกรายการด้านซ้ายเพื่อทำการตรวจสอบ</div>
               )}
             </div>
           </div>
