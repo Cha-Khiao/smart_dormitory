@@ -1,4 +1,5 @@
 // src/app/api/messages/route.ts
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Message from '@/models/Message';
@@ -29,5 +30,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: newMessage }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'ส่งข้อความไม่สำเร็จ' }, { status: 400 });
+  }
+}
+
+// src/app/api/messages/route.ts (แก้ไขฟังก์ชัน PATCH ด้านล่างสุด)
+
+export async function PATCH(request: Request) {
+  try {
+    await connectDB();
+    const { bookingId, readerRole } = await request.json();
+
+    const targetRole = readerRole === 'admin' ? 'customer' : 'admin';
+
+    // 🌟 เปลี่ยนจาก isRead: false เป็น isRead: { $ne: true }
+    await Message.updateMany(
+      { bookingId, senderRole: targetRole, isRead: { $ne: true } },
+      { $set: { isRead: true } }
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'อัปเดตสถานะอ่านแล้วไม่สำเร็จ' }, { status: 500 });
   }
 }
