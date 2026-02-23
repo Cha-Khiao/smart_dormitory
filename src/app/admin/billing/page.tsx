@@ -28,16 +28,20 @@ export default function BillingDashboard() {
   const [isSystemUnlocked, setIsSystemUnlocked] = useState(false);
   const [manuallyUnlockedRooms, setManuallyUnlockedRooms] = useState<string[]>([]);
   
-  // 🌟 State ใหม่: เก็บข้อมูลห้องที่กรอกบิลเสร็จแล้วในรอบนี้
-  const [billedRooms, setBilledRooms] = useState<string[]>([]);
+  // 🌟 State ใหม่: เดือนรอบบิลปัจจุบัน (ดึงตามเวลาเครื่อง)
+  const currentCycleMonth = new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  
+  // 🌟 State ใหม่: เก็บข้อมูลห้องที่ถูกออกบิลไปแล้ว "ในฐานข้อมูล" ประจำเดือนนี้
+  const [dbBilledRooms, setDbBilledRooms] = useState<string[]>([]);
+  const [billedRooms, setBilledRooms] = useState<string[]>([]); // สำหรับอัปเดต UI ทันทีตอนกด
 
-  // 🌟 State ใหม่: สำหรับระบบแบ่งหน้า (Pagination)
+  // ระบบแบ่งหน้า (Pagination)
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const [showBillModal, setShowBillModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
-  const [billForm, setBillForm] = useState({ month: "", room: 0, water: 0, electric: 0, other: 0 });
+  const [billForm, setBillForm] = useState({ month: currentCycleMonth, room: 0, water: 0, electric: 0, other: 0 });
 
   useEffect(() => {
     const savedConfig = localStorage.getItem("billingConfigV2");
@@ -51,16 +55,29 @@ export default function BillingDashboard() {
         endDateTime: getLocalISOString(next5Days)
       });
     }
-    fetchTenants();
+    fetchSystemData(); // โหลดทั้งลูกค้า และ ประวัติบิล
   }, []);
 
-  const fetchTenants = async () => {
+  // 🌟 ฟังก์ชันโหลดข้อมูลอัจฉริยะ (ดึงลูกค้า + เช็คบิลซ้ำ)
+  const fetchSystemData = async () => {
     try {
-      const res = await fetch(`/api/bookings?t=${new Date().getTime()}`);
-      const json = await res.json();
-      if (json.success) setTenants(json.data.filter((b: any) => b.status === "approved"));
+      // 1. ดึงรายชื่อลูกบ้านทั้งหมด
+      const resTenants = await fetch(`/api/bookings?t=${new Date().getTime()}`);
+      const jsonTenants = await resTenants.json();
+      if (jsonTenants.success) setTenants(jsonTenants.data.filter((b: any) => b.status === "approved"));
+
+      // 2. ดึงประวัติบิล เพื่อเช็คว่าเดือนนี้ใครโดนออกบิลไปแล้วบ้าง
+      const resBills = await fetch(`/api/bills?t=${new Date().getTime()}`);
+      const jsonBills = await resBills.json();
+      if (jsonBills.success) {
+        // กรองเอาเฉพาะบิลของ "เดือนปัจจุบัน"
+        const currentMonthBills = jsonBills.data.filter((b: any) => b.month === currentCycleMonth);
+        // ดึงมาเฉพาะเลขห้อง
+        const billedRoomNumbers = currentMonthBills.map((b: any) => b.roomNumber);
+        setDbBilledRooms(billedRoomNumbers);
+      }
     } catch (error) {
-      toast.error("ดึงข้อมูลลูกบ้านไม่สำเร็จ");
+      toast.error("ดึงข้อมูลระบบไม่สำเร็จ");
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +127,6 @@ export default function BillingDashboard() {
       confirmButtonColor: "#3085d6",
       cancelButtonColor: "#6c757d",
       confirmButtonText: "ตรวจสอบสิทธิ์",
-      cancelButtonText: "ยกเลิก",
       showLoaderOnConfirm: true,
       preConfirm: async (password) => {
         if (!password) { Swal.showValidationMessage("กรุณากรอกรหัสผ่าน"); return false; }
@@ -120,7 +136,7 @@ export default function BillingDashboard() {
             body: JSON.stringify({ userId: (session?.user as any)?.id, password })
           });
           const json = await res.json();
-          if (!json.success) throw new Error(json.error || "รหัสผ่านไม่ถูกต้อง");
+          if (!json.success) throw new Error("รหัสผ่านไม่ถูกต้อง");
           return true;
         } catch (error: any) {
           Swal.showValidationMessage(error.message);
@@ -139,12 +155,11 @@ export default function BillingDashboard() {
     e.preventDefault();
     const start = new Date(tempConfig.startDateTime).getTime();
     const end = new Date(tempConfig.endDateTime).getTime();
-    
     if (start >= end) return toast.error("เวลาปิดระบบ ต้องอยู่หลังเวลาเปิดระบบเสมอ!");
 
     Swal.fire({
       title: "ยืนยันการเปลี่ยนแปลง?",
-      text: `รอบบิลใหม่จะถูกกำหนดตามวันและเวลาที่คุณระบุอย่างแม่นยำ`,
+      text: `รอบบิลใหม่จะถูกกำหนดตามวันและเวลาที่คุณระบุ`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#198754",
@@ -154,7 +169,7 @@ export default function BillingDashboard() {
         setBillingConfig(tempConfig);
         localStorage.setItem("billingConfigV2", JSON.stringify(tempConfig));
         setShowConfigModal(false);
-        toast.success("อัปเดตวันและเวลาสำเร็จ!", { icon: '⚙️' });
+        toast.success("อัปเดตวันและเวลาสำเร็จ!");
       }
     });
   };
@@ -183,7 +198,7 @@ export default function BillingDashboard() {
         }).then((finalResult) => {
           if (finalResult.isConfirmed) {
             setManuallyUnlockedRooms((prev) => [...prev, roomNumber]);
-            toast.success(`ปลดล็อกห้อง ${roomNumber} แล้ว!`, { icon: '🔓' });
+            toast.success(`ปลดล็อกห้อง ${roomNumber} แล้ว!`);
           }
         });
       }
@@ -192,14 +207,22 @@ export default function BillingDashboard() {
 
   const openBillModal = (tenant: any) => {
     setSelectedTenant(tenant);
-    const currentMonth = new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
-    setBillForm({ month: currentMonth, room: 4000, water: 0, electric: 0, other: 0 });
+    // เซ็ตค่า Form เตรียมไว้ และล็อกค่าเดือนให้ตรงกับ currentCycleMonth เสมอ
+    setBillForm({ month: currentCycleMonth, room: 4000, water: 0, electric: 0, other: 0 });
     setShowBillModal(true);
   };
 
   const handleCreateBill = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTenant) return;
+
+    // 🌟 Check 2 ชั้น: ป้องกันการแฮกยิง API ซ้ำ
+    if (dbBilledRooms.includes(selectedTenant.roomNumber) || billedRooms.includes(selectedTenant.roomNumber)) {
+      toast.error(`ห้อง ${selectedTenant.roomNumber} ถูกออกบิลประจำเดือนนี้ไปแล้ว!`);
+      setShowBillModal(false);
+      return;
+    }
+
     const total = Number(billForm.room) + Number(billForm.water) + Number(billForm.electric) + Number(billForm.other);
     const toastId = toast.loading("กำลังส่งบิลให้ลูกค้า...");
 
@@ -225,7 +248,7 @@ export default function BillingDashboard() {
         toast.success("ส่งบิลสำเร็จ!", { id: toastId });
         setShowBillModal(false);
         
-        // 🌟 เพิ่มห้องนี้ลงในรายการ "ออกบิลแล้ว" เพื่อให้มันเด้งไปอยู่ล่างสุด
+        // อัปเดต UI ทันทีไม่ต้องรอรีเฟรช
         setBilledRooms((prev) => [...prev, selectedTenant.roomNumber]);
       }
     } catch (error) {
@@ -233,26 +256,20 @@ export default function BillingDashboard() {
     }
   };
 
-  // =======================================================
-  // 🌟 ระบบจัดเรียง (Sorting) และ แบ่งหน้า (Pagination)
-  // =======================================================
-  
-  // 1. เรียงข้อมูล: คนที่ยังไม่ออกบิลอยู่บนสุด, คนที่ออกบิลแล้วไปอยู่ล่างสุด, เรียงตามเลขห้อง
+  // 🌟 จัดเรียงข้อมูล: ใครที่อยู่ใน dbBilledRooms ถือว่าออกบิลแล้ว ให้เด้งไปอยู่ล่างสุด
   const sortedTenants = [...tenants].sort((a, b) => {
-    const aIsBilled = billedRooms.includes(a.roomNumber);
-    const bIsBilled = billedRooms.includes(b.roomNumber);
+    const aIsBilled = dbBilledRooms.includes(a.roomNumber) || billedRooms.includes(a.roomNumber);
+    const bIsBilled = dbBilledRooms.includes(b.roomNumber) || billedRooms.includes(b.roomNumber);
     
-    if (aIsBilled && !bIsBilled) return 1;  // a ออกบิลแล้ว ให้เอาไปไว้ล่าง b
-    if (!aIsBilled && bIsBilled) return -1; // b ออกบิลแล้ว ให้เอา a ไว้บน b
-    
-    // ถ้าสถานะเหมือนกัน ให้เรียงตามเลขห้อง (101, 102, 103...)
+    if (aIsBilled && !bIsBilled) return 1;
+    if (!aIsBilled && bIsBilled) return -1;
     return a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true });
   });
 
-  // 2. ตัดข้อมูลให้แสดงแค่ 10 แถวต่อหน้า
   const totalPages = Math.ceil(sortedTenants.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentTenants = sortedTenants.slice(startIndex, startIndex + itemsPerPage);
+  const totalBilled = dbBilledRooms.length + billedRooms.length; // นับรวมยอดจาก DB + ที่เพิ่งกดไป
 
   if (isLoading) return <div className="text-center mt-5"><div className="spinner-border text-primary"></div></div>;
 
@@ -265,7 +282,7 @@ export default function BillingDashboard() {
         </button>
       </div>
 
-      <h2 className="mb-4 text-primary fw-bold">🧾 ระบบออกบิลอัตโนมัติ (Billing System)</h2>
+      <h2 className="mb-4 text-primary fw-bold">🧾 ระบบออกบิลอัตโนมัติ</h2>
 
       {/* นาฬิกานับถอยหลัง */}
       <div className={`card border-0 shadow-lg rounded-4 mb-4 overflow-hidden text-white ${timerState === 'OPEN' ? 'bg-success' : timerState === 'WAITING' ? 'bg-dark' : 'bg-danger'}`}>
@@ -276,31 +293,18 @@ export default function BillingDashboard() {
 
           {timerState !== 'ENDED' && (
             <div className="d-flex justify-content-center gap-2 gap-md-3">
-              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-center">
-                <div className="fs-1 fw-bold">{timeLeft.days}</div><div className="small text-uppercase">วัน</div>
-              </div>
-              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-center">
-                <div className="fs-1 fw-bold">{timeLeft.hours}</div><div className="small text-uppercase">ชม.</div>
-              </div>
-              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-center">
-                <div className="fs-1 fw-bold">{timeLeft.minutes}</div><div className="small text-uppercase">นาที</div>
-              </div>
-              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-warning text-center">
-                <div className="fs-1 fw-bold">{timeLeft.seconds}</div><div className="small text-uppercase">วินาที</div>
-              </div>
+              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-center"><div className="fs-1 fw-bold">{timeLeft.days}</div><div className="small text-uppercase">วัน</div></div>
+              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-center"><div className="fs-1 fw-bold">{timeLeft.hours}</div><div className="small text-uppercase">ชม.</div></div>
+              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-center"><div className="fs-1 fw-bold">{timeLeft.minutes}</div><div className="small text-uppercase">นาที</div></div>
+              <div className="bg-white bg-opacity-10 rounded-4 p-2 p-md-3 min-w-80px min-w-md-100px text-warning text-center"><div className="fs-1 fw-bold">{timeLeft.seconds}</div><div className="small text-uppercase">วินาที</div></div>
             </div>
           )}
         </div>
       </div>
 
-      {/* ======================================================= */}
-      {/* 🌟 รายการห้องพัก (แบบตาราง Table Layout) */}
-      {/* ======================================================= */}
       <div className="d-flex justify-content-between align-items-center mb-3 mt-5">
         <h4 className="fw-bold mb-0">🏠 รายการห้องพัก ({tenants.length} ห้อง)</h4>
-        <span className="text-muted small">
-          ออกบิลแล้ว <strong className="text-success">{billedRooms.length}</strong> / {tenants.length} ห้อง
-        </span>
+        <span className="text-muted small">ออกบิลแล้ว <strong className="text-success">{totalBilled}</strong> / {tenants.length} ห้อง</span>
       </div>
 
       <div className="card border-0 shadow-sm rounded-4 overflow-hidden bg-white mb-4">
@@ -308,139 +312,95 @@ export default function BillingDashboard() {
           <table className="table table-hover align-middle mb-0">
             <thead className="table-light">
               <tr>
-                <th className="px-4 py-3">เลขห้อง</th>
-                <th className="py-3">ชื่อลูกค้า</th>
-                <th className="py-3">วันที่เริ่มสัญญา</th>
-                <th className="py-3 text-center">สถานะระบบ</th>
+                <th className="px-4 py-3">เลขห้อง</th><th className="py-3">ชื่อลูกค้า</th>
+                <th className="py-3">วันที่เริ่มสัญญา</th><th className="py-3 text-center">สถานะระบบ</th>
                 <th className="px-4 py-3 text-end">การจัดการ</th>
               </tr>
             </thead>
             <tbody>
-              {tenants.length === 0 ? (
-                <tr><td colSpan={5} className="text-center text-muted py-5">ไม่มีข้อมูลลูกบ้าน</td></tr>
-              ) : (
+              {tenants.length === 0 ? <tr><td colSpan={5} className="text-center text-muted py-5">ไม่มีข้อมูลลูกบ้าน</td></tr> : 
                 currentTenants.map((tenant) => {
                   const isManuallyUnlocked = manuallyUnlockedRooms.includes(tenant.roomNumber);
                   const canBill = isSystemUnlocked || isManuallyUnlocked;
-                  const isAlreadyBilled = billedRooms.includes(tenant.roomNumber);
+                  // เช็คจาก 2 ฝั่ง (DB + เพิ่งกดตะกี้)
+                  const isAlreadyBilled = dbBilledRooms.includes(tenant.roomNumber) || billedRooms.includes(tenant.roomNumber);
 
                   return (
-                    // 🌟 ถ้าออกบิลแล้ว แถวจะจางลง (opacity-50) และไฮไลต์สีเขียวอ่อน
                     <tr key={tenant._id} className={isAlreadyBilled ? "bg-success bg-opacity-10" : ""}>
-                      <td className="px-4 py-3">
-                        <span className="badge bg-dark fs-6 shadow-sm">ห้อง {tenant.roomNumber}</span>
-                      </td>
+                      <td className="px-4 py-3"><span className="badge bg-dark fs-6 shadow-sm">ห้อง {tenant.roomNumber}</span></td>
                       <td className="py-3 fw-bold text-dark">{tenant.username}</td>
                       <td className="py-3 text-muted">{new Date(tenant.updatedAt).toLocaleDateString('th-TH')}</td>
                       <td className="py-3 text-center">
-                        {isAlreadyBilled ? (
-                          <span className="badge bg-success px-3 py-2 rounded-pill">✅ ออกบิลแล้ว</span>
-                        ) : canBill ? (
-                          <span className="badge bg-primary-subtle text-primary border border-primary px-3 py-2 rounded-pill">พร้อมออกบิล</span>
-                        ) : (
-                          <span className="badge bg-secondary px-3 py-2 rounded-pill">🔒 ล็อกอยู่</span>
-                        )}
+                        {isAlreadyBilled ? <span className="badge bg-success px-3 py-2 rounded-pill">✅ ออกบิลแล้ว</span> : 
+                         canBill ? <span className="badge bg-primary-subtle text-primary border border-primary px-3 py-2 rounded-pill">พร้อมออกบิล</span> : 
+                         <span className="badge bg-secondary px-3 py-2 rounded-pill">🔒 ล็อกอยู่</span>}
                       </td>
                       <td className="px-4 py-3 text-end">
-                        {isAlreadyBilled ? (
-                           <button className="btn btn-sm btn-outline-success fw-bold rounded-pill px-4" disabled>
-                             ออกบิลสำเร็จ
-                           </button>
-                        ) : canBill ? (
-                          <button className="btn btn-sm btn-primary fw-bold rounded-pill px-4 shadow-sm" onClick={() => openBillModal(tenant)}>
-                            🧾 สร้างบิล
-                          </button>
-                        ) : (
-                          <button className="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3" onClick={() => handleForceUnlock(tenant.roomNumber)}>
-                            ⚠️ ปลดล็อก (ย้ายออก)
-                          </button>
-                        )}
+                        {isAlreadyBilled ? <button className="btn btn-sm btn-outline-success fw-bold rounded-pill px-4 opacity-50" disabled>ออกบิลสำเร็จ</button> : 
+                         canBill ? <button className="btn btn-sm btn-primary fw-bold rounded-pill px-4 shadow-sm" onClick={() => openBillModal(tenant)}>🧾 สร้างบิล</button> : 
+                         <button className="btn btn-sm btn-outline-danger fw-bold rounded-pill px-3" onClick={() => handleForceUnlock(tenant.roomNumber)}>⚠️ ปลดล็อก (ย้ายออก)</button>}
                       </td>
                     </tr>
                   );
                 })
-              )}
+              }
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* 🌟 ระบบเปลี่ยนหน้า (Pagination) */}
       {totalPages > 1 && (
         <div className="d-flex justify-content-center align-items-center gap-2 mb-5">
-          <button 
-            className="btn btn-outline-primary rounded-pill px-3" 
-            disabled={currentPage === 1} 
-            onClick={() => setCurrentPage(prev => prev - 1)}
-          >
-            &laquo; หน้าก่อนหน้า
-          </button>
+          <button className="btn btn-outline-primary rounded-pill px-3" disabled={currentPage === 1} onClick={() => setCurrentPage(prev => prev - 1)}>&laquo; หน้าก่อนหน้า</button>
           <span className="fw-bold text-muted mx-3">หน้า {currentPage} จาก {totalPages}</span>
-          <button 
-            className="btn btn-outline-primary rounded-pill px-3" 
-            disabled={currentPage === totalPages} 
-            onClick={() => setCurrentPage(prev => prev + 1)}
-          >
-            หน้าถัดไป &raquo;
-          </button>
+          <button className="btn btn-outline-primary rounded-pill px-3" disabled={currentPage === totalPages} onClick={() => setCurrentPage(prev => prev + 1)}>หน้าถัดไป &raquo;</button>
         </div>
       )}
 
       {/* ======================================================= */}
-      {/* Modal: ตั้งเวลาละเอียด และ Modal ออกบิล (คงเดิมทั้งหมด) */}
+      {/* 🌟 Modal: ออกบิล (ล็อกช่องเดือน ห้ามแก้ไข) */}
       {/* ======================================================= */}
-      <Modal show={showConfigModal} onHide={() => setShowConfigModal(false)} centered backdrop="static" size="lg">
-        <Modal.Header closeButton className="border-0 pb-0">
-          <Modal.Title className="fw-bold text-dark d-flex align-items-center gap-2">
-            <span className="fs-3">⚙️</span> ตั้งเวลาเปิด-ปิด ระบบออกบิลแบบละเอียด
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="p-4">
-          <Form onSubmit={handleSaveConfig}>
-            <div className="alert alert-success border-0 rounded-3 small text-dark fw-bold mb-4">✅ ยืนยันตัวตนสำเร็จ: คุณสามารถระบุ วัน-เดือน-ปี และเวลา ได้อย่างแม่นยำ</div>
-            <div className="row g-4 mb-4">
-              <div className="col-md-6">
-                <div className="p-3 bg-light rounded-4 border">
-                  <Form.Label className="fw-bold text-primary mb-2">🟢 เวลาเริ่มเปิดระบบ (Start)</Form.Label>
-                  <Form.Control type="datetime-local" required value={tempConfig.startDateTime || ''} onChange={(e) => setTempConfig({...tempConfig, startDateTime: e.target.value})} />
-                </div>
-              </div>
-              <div className="col-md-6">
-                <div className="p-3 bg-light rounded-4 border">
-                  <Form.Label className="fw-bold text-danger mb-2">🛑 เวลาปิดระบบ (End)</Form.Label>
-                  <Form.Control type="datetime-local" required value={tempConfig.endDateTime || ''} onChange={(e) => setTempConfig({...tempConfig, endDateTime: e.target.value})} />
-                </div>
-              </div>
-            </div>
-            <div className="d-flex gap-2 mt-4">
-              <Button variant="light" className="w-50 rounded-pill fw-bold border" onClick={() => setShowConfigModal(false)}>ยกเลิก</Button>
-              <Button variant="success" type="submit" className="w-50 rounded-pill fw-bold shadow-sm">💾 บันทึกและเริ่มนับเวลา</Button>
-            </div>
-          </Form>
-        </Modal.Body>
-      </Modal>
-
       <Modal show={showBillModal} onHide={() => setShowBillModal(false)} centered backdrop="static">
         <Modal.Header closeButton className="border-0 pb-0">
           <Modal.Title className="fw-bold text-primary">🧾 ออกบิลห้อง {selectedTenant?.roomNumber}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form onSubmit={handleCreateBill}>
+            
             <Form.Group className="mb-3">
-              <Form.Label className="fw-bold text-muted small">ประจำเดือน</Form.Label>
-              <Form.Control type="text" required value={billForm.month} onChange={(e) => setBillForm({...billForm, month: e.target.value})} />
+              <Form.Label className="fw-bold text-muted small">ประจำเดือน (รอบบิลปัจจุบัน)</Form.Label>
+              {/* 🌟 บล็อก readOnly ไว้ กันแอดมินพิมพ์ชื่อเดือนแปลกๆ เพื่อออกบิลซ้ำ */}
+              <Form.Control type="text" readOnly className="bg-light fw-bold text-primary" value={billForm.month} />
             </Form.Group>
+
             <div className="row g-3 mb-4">
               <div className="col-6"><Form.Label className="fw-bold small mb-1">ค่าห้อง (บาท)</Form.Label><Form.Control type="number" required value={billForm.room || ''} onChange={(e) => setBillForm({...billForm, room: Number(e.target.value)})} /></div>
               <div className="col-6"><Form.Label className="fw-bold small mb-1 text-primary">💧 ค่าน้ำ (บาท)</Form.Label><Form.Control type="number" required value={billForm.water || ''} onChange={(e) => setBillForm({...billForm, water: Number(e.target.value)})} /></div>
               <div className="col-6"><Form.Label className="fw-bold small mb-1 text-warning">⚡ ค่าไฟ (บาท)</Form.Label><Form.Control type="number" required value={billForm.electric || ''} onChange={(e) => setBillForm({...billForm, electric: Number(e.target.value)})} /></div>
               <div className="col-6"><Form.Label className="fw-bold small mb-1 text-danger">🛠️ ค่าปรับ/อื่นๆ</Form.Label><Form.Control type="number" value={billForm.other || ''} onChange={(e) => setBillForm({...billForm, other: Number(e.target.value)})} /></div>
             </div>
+            
             <div className="p-3 bg-primary-subtle rounded-4 d-flex justify-content-between align-items-center mb-4 border border-primary border-opacity-25">
               <span className="fw-bold text-primary">ยอดรวม:</span>
               <span className="fs-3 fw-bold text-primary">{(Number(billForm.room) + Number(billForm.water) + Number(billForm.electric) + Number(billForm.other)).toLocaleString()} ฿</span>
             </div>
             <Button variant="primary" type="submit" className="w-100 rounded-pill fw-bold shadow-sm py-2">🚀 ส่งบิลทันที</Button>
+          </Form>
+        </Modal.Body>
+      </Modal>
+
+      {/* Modal ตั้งค่าเวลา (เหมือนเดิมเป๊ะ) */}
+      <Modal show={showConfigModal} onHide={() => setShowConfigModal(false)} centered backdrop="static" size="lg">
+        <Modal.Header closeButton className="border-0 pb-0">
+          <Modal.Title className="fw-bold text-dark d-flex align-items-center gap-2"><span className="fs-3">⚙️</span> ตั้งเวลาเปิด-ปิด ระบบออกบิล</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-4">
+          <Form onSubmit={handleSaveConfig}>
+            <div className="row g-4 mb-4">
+              <div className="col-md-6"><div className="p-3 bg-light rounded-4 border"><Form.Label className="fw-bold text-primary mb-2">🟢 เวลาเริ่มเปิดระบบ</Form.Label><Form.Control type="datetime-local" required value={tempConfig.startDateTime || ''} onChange={(e) => setTempConfig({...tempConfig, startDateTime: e.target.value})} /></div></div>
+              <div className="col-md-6"><div className="p-3 bg-light rounded-4 border"><Form.Label className="fw-bold text-danger mb-2">🛑 เวลาปิดระบบ</Form.Label><Form.Control type="datetime-local" required value={tempConfig.endDateTime || ''} onChange={(e) => setTempConfig({...tempConfig, endDateTime: e.target.value})} /></div></div>
+            </div>
+            <div className="d-flex gap-2 mt-4"><Button variant="light" className="w-50 rounded-pill fw-bold border" onClick={() => setShowConfigModal(false)}>ยกเลิก</Button><Button variant="success" type="submit" className="w-50 rounded-pill fw-bold shadow-sm">💾 บันทึก</Button></div>
           </Form>
         </Modal.Body>
       </Modal>
