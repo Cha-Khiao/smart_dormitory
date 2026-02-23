@@ -2,8 +2,34 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Room from '@/models/Room';
-import User from '@/models/User'; // 👈 1. อย่าลืม import User เข้ามาด้วย
+import User from '@/models/User';
+import Booking from '@/models/Booking';
 
+// ==========================================
+// 🌟 1. ดึงข้อมูลห้องพักรายห้อง (GET) - ฟังก์ชันที่หายไป!
+// ==========================================
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+    const { id } = await params;
+    const room = await Room.findById(id);
+    
+    if (!room) {
+      return NextResponse.json({ success: false, error: 'ไม่พบห้องพักนี้' }, { status: 404 });
+    }
+    
+    return NextResponse.json({ success: true, data: room }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'ดึงข้อมูลไม่สำเร็จ' }, { status: 500 });
+  }
+}
+
+// ==========================================
+// 2. ลบห้องพัก (DELETE)
+// ==========================================
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -11,13 +37,11 @@ export async function DELETE(
   try {
     await connectDB();
     const { id } = await params;
-    
-    // ค้นหาและลบข้อมูลจาก MongoDB
     const deletedRoom = await Room.findByIdAndDelete(id);
     
-    // 🌟 2. ถ้าลบห้องทิ้ง ให้เคลียร์เลขห้องของลูกค้าที่เคยอยู่ห้องนี้ด้วย
     if (deletedRoom) {
       await User.updateMany({ roomNumber: deletedRoom.roomNumber }, { $set: { roomNumber: "" } });
+      await Booking.updateMany({ roomId: id }, { $set: { status: 'rejected' } });
     }
     
     return NextResponse.json({ success: true, message: 'ลบห้องพักสำเร็จ' });
@@ -26,6 +50,9 @@ export async function DELETE(
   }
 }
 
+// ==========================================
+// 3. อัปเดตห้องพัก (PUT) + ระบบ Self-Healing
+// ==========================================
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -41,10 +68,13 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'ไม่พบห้องพักนี้' }, { status: 404 });
     }
 
-    // 🌟 3. ถ้าแอดมินเปลี่ยนสถานะห้องกลับมาเป็น "ว่าง" (available) 
-    // ให้ถอดเลขห้องออกจาก User ทุกคนที่มีเลขห้องนี้
+    // ถ้าแอดมินเปลี่ยนห้องกลับเป็น "ว่าง"
     if (body.status === 'available') {
       await User.updateMany({ roomNumber: updatedRoom.roomNumber }, { $set: { roomNumber: "" } });
+      await Booking.updateMany(
+        { roomId: id, status: { $ne: 'rejected' } }, 
+        { $set: { status: 'rejected' } }
+      );
     }
 
     return NextResponse.json({ success: true, data: updatedRoom });
