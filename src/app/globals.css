@@ -163,3 +163,37 @@ body, .card, .modal-content, .navbar, .btn, input, select, textarea {
   background-color: var(--bs-gray-700) !important;
   color: var(--bs-white) !important;
 }
+
+/* ==================================================== */
+/* 📞 THE PHONE NUMBER FIX (ซ่อมเบอร์โทรศัพท์ที่ดำมืด) */
+/* ==================================================== */
+
+/* 1. กรณีเป็นข้อความเบอร์โทร (ที่เบราว์เซอร์แอบแปลงเป็นลิงก์ tel:) */
+[data-bs-theme="dark"] a[href^="tel:"],
+[data-bs-theme="dark"] a {
+  color: var(--bs-info-text-emphasis) !important; /* เปลี่ยนลิงก์เป็นสีฟ้าสว่าง/สีที่อ่านง่ายในที่มืด */
+  text-decoration: none; /* เอาเส้นใต้ที่เบราว์เซอร์แอบใส่ออก */
+}
+
+/* 2. บังคับลิงก์ที่เคยถูกสั่งให้เป็นสีดำ ให้กลับมาสว่าง */
+[data-bs-theme="dark"] a.text-dark,
+[data-bs-theme="dark"] a.text-black,
+[data-bs-theme="dark"] a.text-muted {
+  color: var(--bs-gray-200) !important;
+}
+
+/* 3. กรณีเป็น "ช่องกรอกข้อมูล" เบอร์โทรศัพท์ (Input type tel) */
+[data-bs-theme="dark"] input[type="tel"],
+[data-bs-theme="dark"] input[type="number"],
+[data-bs-theme="dark"] input[type="text"] {
+  background-color: var(--bs-gray-800) !important;
+  color: var(--bs-white) !important;
+  border-color: var(--bs-gray-700) !important;
+}
+
+/* เปลี่ยนสี Placeholder (คำใบ้ในช่องกรอก) ให้ไม่มืดจนเกินไป */
+[data-bs-theme="dark"] input::placeholder,
+[data-bs-theme="dark"] textarea::placeholder {
+  color: var(--bs-gray-500) !important;
+  opacity: 1;
+}
