@@ -18,79 +18,66 @@ export default function Navbar() {
   const isAdmin = (session?.user as any)?.role === 'admin';
 
   return (
-    <nav className="navbar navbar-expand-lg bg-body-tertiary shadow-sm py-3 sticky-top">
+    // ใช้ bg-body-tertiary เพื่อให้สีพื้นหลังเปลี่ยนตาม Dark/Light โหมดอัตโนมัติ
+    <nav className="navbar navbar-expand-lg bg-body-tertiary border-bottom border-secondary-subtle py-3 sticky-top transition-theme">
       <div className="container">
-        <Link className="navbar-brand fw-bold text-primary fs-4" href={isAdmin ? "/admin" : "/"}>
-          ✨ Smart Dorm
+        {/* โลโก้ */}
+        <Link className="navbar-brand fw-bold text-primary fs-4 d-flex align-items-center gap-2" href={isAdmin ? "/admin" : "/"}>
+          <div className="bg-primary text-white rounded-3 d-flex align-items-center justify-content-center shadow-sm" style={{ width: "36px", height: "36px", fontSize: "1.2rem" }}>
+            🏢
+          </div>
+          <span className="text-body">Smart Dorm</span>
         </Link>
         
-        <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <button className="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
           <span className="navbar-toggler-icon"></span>
         </button>
 
         <div className="collapse navbar-collapse" id="navbarNav">
           
-          {/* ======================================================= */}
-          {/* 🌟 เมนูนำทางหลัก (Nav Links) ไว้ตรงนี้ที่เดียว ไม่ซ้ำซ้อน */}
-          {/* ======================================================= */}
-          <ul className="navbar-nav me-auto mt-3 mt-lg-0 gap-1 fw-semibold">
+          {/* 🌟 เปลี่ยน me-auto เป็น ms-auto เพื่อดันเมนูทั้งหมดไปชิดขวา */}
+          <ul className="navbar-nav ms-auto mt-3 mt-lg-0 gap-2 fw-semibold align-items-lg-center">
             {isAdmin ? (
               <>
-                <li className="nav-item">
-                  <Link href="/admin" className={`nav-link px-3 rounded-pill ${pathname === '/admin' ? 'bg-primary text-white shadow-sm' : ''}`}>📊 แดชบอร์ด</Link>
-                </li>
-                <li className="nav-item">
-                  <Link href="/admin/rooms" className={`nav-link px-3 rounded-pill ${pathname === '/admin/rooms' ? 'bg-primary text-white shadow-sm' : ''}`}>🚪 จัดการห้องพัก</Link>
-                </li>
-                <li className="nav-item">
-                  <Link href="/admin/bookings" className={`nav-link px-3 rounded-pill ${pathname === '/admin/bookings' ? 'bg-primary text-white shadow-sm' : ''}`}>💬 ระบบสนทนา</Link>
-                </li>
-                <li className="nav-item">
-                  <Link href="/admin/billing" className={`nav-link px-3 rounded-pill ${pathname === '/admin/billing' ? 'bg-primary text-white shadow-sm' : ''}`}>🧾 ระบบออกบิล</Link>
-                </li>
+                <li className="nav-item"><Link href="/admin" className={`nav-link px-3 rounded-pill ${pathname === '/admin' ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'}`}>แดชบอร์ด</Link></li>
+                <li className="nav-item"><Link href="/admin/rooms" className={`nav-link px-3 rounded-pill ${pathname === '/admin/rooms' ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'}`}>จัดการห้องพัก</Link></li>
+                <li className="nav-item"><Link href="/admin/bookings" className={`nav-link px-3 rounded-pill ${pathname === '/admin/bookings' ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'}`}>ระบบสนทนา</Link></li>
+                <li className="nav-item"><Link href="/admin/billing" className={`nav-link px-3 rounded-pill ${pathname === '/admin/billing' ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'}`}>ระบบออกบิล</Link></li>
               </>
             ) : (
               <>
-                <li className="nav-item">
-                  <Link href="/" className={`nav-link px-3 rounded-pill ${pathname === '/' ? 'bg-primary text-white shadow-sm' : ''}`}>🏠 หน้าแรก</Link>
-                </li>
+                {/* 🌟 ตัดคำว่า "หน้าแรก" ออก เหลือแค่ "ห้องพักของฉัน" */}
                 {session?.user && (
                   <li className="nav-item">
-                    <Link href="/my-room" className={`nav-link px-3 rounded-pill ${pathname === '/my-room' ? 'bg-primary text-white shadow-sm' : ''}`}>🔑 ห้องพักของฉัน</Link>
+                    <Link href="/my-room" className={`nav-link px-4 py-2 rounded-pill ${pathname === '/my-room' ? 'bg-primary text-white shadow-sm' : 'text-body-secondary'}`}>
+                      🔑 ห้องพักของฉัน
+                    </Link>
                   </li>
                 )}
               </>
             )}
           </ul>
 
-          {/* ======================================================= */}
-          {/* 🌟 โซนจัดการบัญชี มุมขวา (Dropdown มีแค่ออกจากระบบ) */}
-          {/* ======================================================= */}
-          <div className="d-flex align-items-center gap-3 mt-3 mt-lg-0 border-start ps-lg-3">
+          {/* โซนโปรไฟล์และปุ่มต่างๆ */}
+          <div className="d-flex align-items-center gap-3 mt-3 mt-lg-0 ms-lg-3 ps-lg-3 border-start border-secondary-subtle pt-3 pt-lg-0">
             <ThemeToggle />
             
             {session?.user ? (
               <div className="dropdown">
-                <button className="btn btn-outline-primary dropdown-toggle rounded-pill px-4 fw-bold bg-body" type="button" data-bs-toggle="dropdown">
-                  👤 {session.user.name}
+                <button className="btn btn-sm btn-outline-secondary dropdown-toggle rounded-pill px-3 py-2 fw-bold bg-body text-body d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
+                  <div className="bg-secondary-subtle rounded-circle d-flex align-items-center justify-content-center" style={{ width: "24px", height: "24px" }}>👤</div>
+                  {session.user.name}
                 </button>
-                <ul className="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2 rounded-4 p-2" style={{ minWidth: "200px" }}>
-                  
-                  {/* แสดงสถานะบัญชีให้ชัดเจน */}
-                  <li className="px-3 py-2 text-muted small text-center border-bottom mb-2">
+                <ul className="dropdown-menu dropdown-menu-end shadow-lg border border-secondary-subtle mt-2 rounded-4 p-2 bg-body" style={{ minWidth: "220px" }}>
+                  <li className="px-3 py-2 text-body-secondary small text-center border-bottom border-secondary-subtle mb-2">
                     เข้าสู่ระบบในฐานะ<br/>
-                    <strong className={`fs-6 ${isAdmin ? "text-primary" : "text-success"}`}>
-                      {isAdmin ? "ผู้ดูแลระบบ (Admin)" : "ผู้เช่า / ลูกค้า"}
-                    </strong>
+                    <strong className={`fs-6 ${isAdmin ? "text-primary" : "text-success"}`}>{isAdmin ? "ผู้ดูแลระบบ" : "ลูกบ้าน"}</strong>
                   </li>
-                  
-                  {/* เหลือแค่ปุ่มออกจากระบบ */}
                   <li>
-                    <button className="dropdown-item text-danger rounded py-2 fw-bold text-center d-flex justify-content-center align-items-center gap-2" onClick={() => signOut({ callbackUrl: "/login" })}>
+                    <button className="dropdown-item text-danger rounded-3 py-2 fw-bold text-center d-flex justify-content-center align-items-center gap-2" onClick={() => signOut({ callbackUrl: "/login" })}>
                       🚪 ออกจากระบบ
                     </button>
                   </li>
-
                 </ul>
               </div>
             ) : (
@@ -100,7 +87,6 @@ export default function Navbar() {
               </div>
             )}
           </div>
-
         </div>
       </div>
     </nav>

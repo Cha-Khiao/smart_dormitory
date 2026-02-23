@@ -1,26 +1,33 @@
 // src/components/ThemeToggle.tsx
 "use client";
 
-import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 export default function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const [theme, setTheme] = useState("light");
 
   useEffect(() => {
-    setMounted(true);
+    // โหลดค่า ธีม จาก LocalStorage ตอนเปิดเว็บ
+    const savedTheme = localStorage.getItem("theme") || "light";
+    setTheme(savedTheme);
+    document.documentElement.setAttribute("data-bs-theme", savedTheme);
   }, []);
 
-  if (!mounted) return null;
+  const toggleTheme = () => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+    // 🌟 พระเอกอยู่ตรงนี้: สั่งเปลี่ยนธีมของ Bootstrap ทั้งระบบ
+    document.documentElement.setAttribute("data-bs-theme", newTheme);
+  };
 
   return (
-    <button
-      className={`btn ${theme === "dark" ? "btn-light" : "btn-dark"} px-4 py-2`}
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      style={{ borderRadius: "20px", fontWeight: "500" }}
+    <button 
+      onClick={toggleTheme} 
+      className="btn btn-sm btn-outline-secondary rounded-pill px-3 d-flex align-items-center gap-2"
+      title={theme === 'light' ? 'เปลี่ยนเป็นโหมดมืด' : 'เปลี่ยนเป็นโหมดสว่าง'}
     >
-      {theme === "dark" ? "🌞 สลับเป็นโหมดสว่าง" : "🌙 สลับเป็นโหมดมืด"}
+      {theme === "light" ? "🌙 โหมดมืด" : "☀️ โหมดสว่าง"}
     </button>
   );
 }
