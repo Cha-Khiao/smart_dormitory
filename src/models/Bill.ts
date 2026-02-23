@@ -14,6 +14,7 @@ const billSchema = new mongoose.Schema({
   status: { type: String, default: 'unpaid' },
   paymentMethod: { type: String, default: '' },
   slipUrl: { type: String, default: '' },
+  ocrText: { type: String, default: '' },
 }, { timestamps: true });
 
 export default mongoose.models.Bill || mongoose.model('Bill', billSchema);
