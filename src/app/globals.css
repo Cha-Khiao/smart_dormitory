@@ -72,3 +72,94 @@ body[data-bs-theme="light"] {
 body, .navbar, .card, .modal-content {
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out, border-color 0.3s ease-in-out;
 }
+
+/* src/app/globals.css */
+
+/* บังคับให้พื้นหลังและตัวอักษรของทั้งเว็บ เปลี่ยนสีตามโหมดอย่างนุ่มนวล */
+body {
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+
+/* ทำให้การ์ดและปุ่มต่างๆ ค่อยๆ เปลี่ยนสีตาม */
+.card, .modal-content, .dropdown-menu, .btn, .nav-link, input, select, textarea {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ปรับ Modal ให้พื้นหลังด้านหลัง (Backdrop) ดูเนียนตาขึ้นในโหมดมืด */
+[data-bs-theme="dark"] .modal-backdrop {
+  opacity: 0.7 !important;
+}
+
+/* ==================================================== */
+/* 🌙 THE DARK MODE MAGIC OVERRIDE (แก้สีเพี้ยนทั้งระบบ) */
+/* ==================================================== */
+
+/* กำหนด Transition ให้การเปลี่ยนสีนุ่มนวลทั้งเว็บ */
+body, .card, .modal-content, .navbar, .btn, input, select, textarea {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* เมื่ออยู่ในโหมดมืด (Dark Mode) ให้บังคับเปลี่ยนสีคลาสที่ถูกล็อกตายตัวไว้ */
+[data-bs-theme="dark"] .bg-white {
+  background-color: var(--bs-gray-900) !important;
+  color: var(--bs-gray-100) !important;
+}
+
+[data-bs-theme="dark"] .bg-light {
+  background-color: var(--bs-gray-800) !important;
+  color: var(--bs-gray-200) !important;
+}
+
+[data-bs-theme="dark"] .text-dark, 
+[data-bs-theme="dark"] .text-black {
+  color: var(--bs-gray-100) !important;
+}
+
+[data-bs-theme="dark"] .text-muted {
+  color: var(--bs-gray-500) !important;
+}
+
+[data-bs-theme="dark"] .border-light,
+[data-bs-theme="dark"] .border {
+  border-color: var(--bs-gray-700) !important;
+}
+
+/* 🌟 ปรับแต่ง Card และ Modal ไม่ให้สว่างจ้าทะลุจอ */
+[data-bs-theme="dark"] .card, 
+[data-bs-theme="dark"] .modal-content {
+  background-color: var(--bs-gray-900) !important;
+  border: 1px solid var(--bs-gray-800) !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.5) !important;
+}
+
+/* 🌟 ปรับแต่งช่องกรอกข้อมูล (Input / Form) ให้เป็นสีเทาเข้ม อ่านง่าย */
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select,
+[data-bs-theme="dark"] input {
+  background-color: var(--bs-gray-800) !important;
+  color: var(--bs-white) !important;
+  border-color: var(--bs-gray-700) !important;
+}
+
+[data-bs-theme="dark"] .form-control:focus,
+[data-bs-theme="dark"] .form-select:focus {
+  background-color: var(--bs-gray-700) !important;
+  color: var(--bs-white) !important;
+}
+
+/* 🌟 แก้ปัญหา Dropdown เมนูจางหาย */
+[data-bs-theme="dark"] .dropdown-menu {
+  background-color: var(--bs-gray-800) !important;
+  border-color: var(--bs-gray-700) !important;
+}
+
+[data-bs-theme="dark"] .dropdown-item {
+  color: var(--bs-gray-200) !important;
+}
+
+[data-bs-theme="dark"] .dropdown-item:hover {
+  background-color: var(--bs-gray-700) !important;
+  color: var(--bs-white) !important;
+}
