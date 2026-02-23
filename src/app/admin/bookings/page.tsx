@@ -169,6 +169,45 @@ export default function AdminInboxPage() {
     return new Date(dateString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // ฟังก์ชันสุดล้ำ: สแกนหา URL รูปภาพในข้อความ แล้วแปลงร่างเป็นรูปภาพจริงๆ
+  const renderMessageContent = (text: string, isBubbleDark: boolean) => {
+    if (!text) return null;
+    
+    // ตรวจจับ URL 
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        // ถ้าเป็นลิงก์จาก Cloudinary หรือไฟล์รูปภาพ
+        if (part.includes('cloudinary.com') || part.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+          return (
+            <div key={i} className="mt-2 mb-1">
+              <a href={part} target="_blank" rel="noopener noreferrer" title="คลิกเพื่อดูรูปขนาดเต็ม">
+                <img 
+                  src={part} 
+                  alt="เอกสารแนบ" 
+                  className="img-fluid rounded-3 shadow-sm border border-light" 
+                  style={{ maxHeight: "180px", maxWidth: "100%", objectFit: "cover", cursor: "zoom-in" }} 
+                />
+              </a>
+              <div className="small text-end mt-1" style={{fontSize: "0.6rem", opacity: 0.8}}>🔍 คลิกเพื่อดูรูปเต็ม</div>
+            </div>
+          );
+        }
+        // ถ้าเป็นลิงก์เว็บธรรมดา
+        return (
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer" 
+             className={`text-decoration-underline ${isBubbleDark ? 'text-white' : 'text-primary'}`}>
+            [เปิดลิงก์แนบ]
+          </a>
+        );
+      }
+      // ข้อความธรรมดา
+      return <span key={i}>{part}</span>;
+    });
+  };
+
   return (
     <div className="container-fluid position-relative" style={{ height: "85vh" }}>
       
@@ -311,6 +350,7 @@ export default function AdminInboxPage() {
 
               <div className="card-body p-4 overflow-auto bg-body-tertiary d-flex flex-column gap-3" style={{ flexGrow: 1 }}>
                 <div className="text-center text-muted small mb-3">เริ่มการสนทนาห้อง {selectedChat.roomNumber}</div>
+                {/* 🌟 เปลี่ยนจุดแสดงผลข้อความให้ฉลาดขึ้น */}
                 {messages.map((msg, idx) => {
                   const isAdmin = msg.senderRole === "admin";
                   return (
@@ -318,8 +358,11 @@ export default function AdminInboxPage() {
                       <div className="small text-muted mb-1 px-2">{msg.senderName}</div>
                       <div className="d-flex align-items-end gap-2" style={{ flexDirection: isAdmin ? 'row-reverse' : 'row' }}>
                         <div className={`px-3 py-2 rounded-4 shadow-sm ${isAdmin ? 'bg-primary text-white' : 'bg-white text-dark border'}`}
-                             style={{ maxWidth: "250px", wordBreak: "break-word", borderBottomRightRadius: isAdmin ? "4px" : "16px", borderBottomLeftRadius: !isAdmin ? "4px" : "16px" }}>
-                          {msg.text}
+                             style={{ maxWidth: "280px", wordBreak: "break-word", borderBottomRightRadius: isAdmin ? "4px" : "16px", borderBottomLeftRadius: !isAdmin ? "4px" : "16px" }}>
+                          
+                          {/* 🎯 เรียกใช้ฟังก์ชันแปลงรูปภาพตรงนี้ แทนคำว่า {msg.text} เดิม */}
+                          {renderMessageContent(msg.text, isAdmin)}
+
                         </div>
                         <div className="d-flex flex-column align-items-end" style={{ fontSize: "0.65rem" }}>
                           <span className="text-muted">{formatTime(msg.createdAt)}</span>
