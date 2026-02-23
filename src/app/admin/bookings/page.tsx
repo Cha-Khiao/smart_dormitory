@@ -67,9 +67,11 @@ export default function AdminInboxPage() {
     return () => clearInterval(interval);
   }, [selectedChat]);
 
+  // ลบ useEffect ตัวเก่าที่คุม messagesEndRef ออก แล้วใช้โค้ดนี้แทน
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    // เลื่อนจอลงล่างสุดเฉพาะตอนคลิกเปลี่ยนคนคุย (เปิดแชทใหม่)
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [selectedChat]); // เปลี่ยน Dependency จาก [messages] เป็น [selectedChat]
 
   // 3. ฟังก์ชันแอดมินส่งข้อความ
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -178,13 +180,6 @@ export default function AdminInboxPage() {
       </div>
 
       <h2 className="mb-4 text-primary fw-bold">ระบบสนทนาลูกค้า (Admin Chat)</h2>
-      
-      {/* 🌟 ซ่อนโหมด Debug เอาไว้เผื่อเช็ค JSON บนหน้าเว็บโดยไม่ต้องกด F12 */}
-      {debugMode && (
-        <div className="alert alert-dark p-2" style={{ maxHeight: '150px', overflow: 'auto', fontSize: '12px' }}>
-          <pre>{JSON.stringify(bookings, null, 2)}</pre>
-        </div>
-      )}
 
       <div className="row h-100 g-2">
         {/* ==================== คอลัมน์ 1: ห้องพัก ==================== */}
