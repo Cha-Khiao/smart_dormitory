@@ -83,25 +83,40 @@ export default function CustomerChatPage({ params }: { params: Promise<{ id: str
   };
 
   // ฟังก์ชันส่งเรื่องทำสัญญา (อัปเดต Booking)
+  // ภายใน src/app/(client)/chat/[id]/page.tsx
+
+  // ... (โค้ดดึงข้อมูลด้านบนเหมือนเดิม) ...
+
   const handleSubmitContract = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const toastId = toast.loading("กำลังส่งข้อมูลให้แอดมิน...");
+    const toastId = toast.loading("กำลังส่งข้อมูล...");
 
     try {
-      let payload: any = { id: bookingId, roomId: "ignore_but_needed_for_api" }; // ต้องปรับ API PATCH นิดหน่อยให้รองรับการอัปเดตแบบอิสระ
+      let payload: any = { id: bookingId, roomId: "ignore" };
+      let systemMessage = ""; // 🌟 เตรียมข้อความที่จะส่งเข้าแชท
 
       if (contractMethod === "online") {
-        if (!moveInDate || !idCardFile || !slipFile) throw new Error("กรุณากรอกข้อมูลออนไลน์ให้ครบ");
+        if (!moveInDate || !idCardFile || !slipFile) throw new Error("กรุณากรอกข้อมูลให้ครบ");
         const idCardUrl = await uploadToCloudinary(idCardFile);
         const slipUrl = await uploadToCloudinary(slipFile);
+        
         payload = { ...payload, status: "pending_approval", contractMethod: "online", moveInDate, idCardUrl, slipUrl };
-      } else {
+        systemMessage = `📄 ส่งเอกสารทำสัญญาออนไลน์ (วันที่ต้องการย้ายเข้า: ${new Date(moveInDate).toLocaleDateString('th-TH')})`;
+        
+      } else if (contractMethod === "view_room") {
         if (!appointmentDate) throw new Error("กรุณาเลือกวันนัดหมาย");
-        payload = { ...payload, status: "appointment", contractMethod: "onsite", appointmentDate };
+        payload = { ...payload, status: "appointment", contractMethod: "view_room", appointmentDate };
+        // 🌟 ดึงวันที่มาใส่ในข้อความแชทเลย
+        systemMessage = `👀 ขอนัดหมายเข้ามา "ดูห้องพัก" ในวันที่: ${new Date(appointmentDate).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })} น.`;
+        
+      } else if (contractMethod === "onsite_contract") {
+        if (!appointmentDate) throw new Error("กรุณาเลือกวันนัดหมาย");
+        payload = { ...payload, status: "appointment", contractMethod: "onsite_contract", appointmentDate };
+        // 🌟 ดึงวันที่มาใส่ในข้อความแชท
+        systemMessage = `✍️ ขอนัดหมายเข้ามา "ทำสัญญาและชำระเงินหน้างาน" ในวันที่: ${new Date(appointmentDate).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })} น.`;
       }
 
-      // ยิงไปอัปเดตสถานะ Booking
       const res = await fetch("/api/bookings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -110,15 +125,16 @@ export default function CustomerChatPage({ params }: { params: Promise<{ id: str
 
       const json = await res.json();
       if (json.success) {
-        toast.success("ส่งเรื่องสำเร็จ! กรุณารอแอดมินตอบกลับ", { id: toastId });
+        toast.success("ส่งข้อมูลสำเร็จ!", { id: toastId });
         setShowModal(false);
-        // ส่งข้อความอัตโนมัติแจ้งแอดมินในแชท
+        
+        // 🌟 ส่งข้อความที่มี "วันที่" เข้าไปในห้องแชท
         await fetch("/api/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             bookingId, senderId: (session?.user as any).id, senderName: "System", senderRole: "customer",
-            text: contractMethod === "online" ? "📄 ลูกค้าได้ส่งเอกสารทำสัญญาออนไลน์แล้ว" : "📅 ลูกค้าขอนัดหมายเข้ามาดูห้อง/ทำสัญญาหน้างาน",
+            text: systemMessage
           }),
         });
       } else {
@@ -186,19 +202,19 @@ export default function CustomerChatPage({ params }: { params: Promise<{ id: str
       </div>
 
       {/* ======================================================= */}
-      {/* Modal: เลือกวิธีดำเนินการเช่า (ออนไลน์ vs นัดหมาย) */}
+      {/* Modal: เลือกวิธีดำเนินการ (อัปเดตใหม่ 3 ตัวเลือก) */}
       {/* ======================================================= */}
       <Modal show={showModal} onHide={() => setShowModal(false)} centered size="lg">
         <Modal.Header closeButton className="border-0 pb-0">
-          <Modal.Title className="fw-bold text-primary px-2">ดำเนินการเช่าห้อง {roomNumber}</Modal.Title>
+          <Modal.Title className="fw-bold text-primary px-2">ดำเนินการเกี่ยวกับห้อง {roomNumber}</Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4">
           <Tabs activeKey={contractMethod} onSelect={(k) => setContractMethod(k || 'online')} className="mb-4 nav-fill">
-            <Tab eventKey="online" title="🌐 ทำสัญญาและจ่ายเงินออนไลน์ (รวดเร็ว)">
+            
+            {/* แท็บ 1: ออนไลน์ */}
+            <Tab eventKey="online" title="🌐 ทำสัญญาออนไลน์">
               <Form onSubmit={handleSubmitContract} className="mt-3">
-                <div className="alert alert-info border-0 rounded-3 small">
-                  อัปโหลดเอกสารและสลิปโอนเงิน (ค่าเช่าล่วงหน้า + มัดจำ) เพื่อให้แอดมินอนุมัติห้องพักทันที
-                </div>
+                <div className="alert alert-info border-0 rounded-3 small">อัปโหลดเอกสารเพื่อทำสัญญาและรอแอดมินอนุมัติห้อง</div>
                 <Form.Group className="mb-3">
                   <Form.Label className="fw-bold">📅 วันที่ต้องการย้ายเข้า</Form.Label>
                   <Form.Control type="date" value={moveInDate} onChange={(e) => setMoveInDate(e.target.value)} required={contractMethod === 'online'} />
@@ -209,30 +225,44 @@ export default function CustomerChatPage({ params }: { params: Promise<{ id: str
                     <Form.Control type="file" accept="image/*" onChange={(e: any) => setIdCardFile(e.target.files[0])} required={contractMethod === 'online'} />
                   </div>
                   <div className="col-md-6">
-                    <Form.Label className="fw-bold text-success">🧾 สลิปโอนเงินมัดจำ</Form.Label>
+                    <Form.Label className="fw-bold text-success">🧾 สลิปโอนเงิน</Form.Label>
                     <Form.Control type="file" accept="image/*" onChange={(e: any) => setSlipFile(e.target.files[0])} required={contractMethod === 'online'} />
                   </div>
                 </div>
                 <Button variant="primary" type="submit" className="w-100 rounded-pill fw-bold" disabled={isSubmitting}>
-                  {isSubmitting ? "กำลังส่งข้อมูล..." : "ส่งเอกสารทำสัญญาออนไลน์"}
+                  {isSubmitting ? "กำลังส่ง..." : "ส่งเอกสารออนไลน์"}
                 </Button>
               </Form>
             </Tab>
 
-            <Tab eventKey="onsite" title="🤝 นัดหมายดูห้อง/ทำสัญญาหน้างาน">
+            {/* แท็บ 2: นัดดูห้อง */}
+            <Tab eventKey="view_room" title="👀 นัดดูห้องพัก">
               <Form onSubmit={handleSubmitContract} className="mt-3">
-                <div className="alert alert-warning border-0 rounded-3 small text-dark">
-                  นัดหมายวันเวลาเพื่อเข้ามาดูห้องพักจริง และชำระเงิน/เซ็นสัญญาที่สำนักงาน
-                </div>
+                <div className="alert alert-secondary border-0 rounded-3 small">ขอนัดหมายเพื่อเข้ามาดูสถานที่จริง ก่อนตัดสินใจเช่า</div>
                 <Form.Group className="mb-4">
-                  <Form.Label className="fw-bold">📅 เลือกวันและเวลาที่จะเข้ามา</Form.Label>
-                  <Form.Control type="datetime-local" value={appointmentDate} onChange={(e) => setAppointmentDate(e.target.value)} required={contractMethod === 'onsite'} />
+                  <Form.Label className="fw-bold">📅 เลือกวันและเวลาที่จะเข้ามาดูห้อง</Form.Label>
+                  <Form.Control type="datetime-local" value={appointmentDate} onChange={(e) => setAppointmentDate(e.target.value)} required={contractMethod === 'view_room'} />
                 </Form.Group>
-                <Button variant="warning" type="submit" className="w-100 rounded-pill fw-bold" disabled={isSubmitting}>
-                  {isSubmitting ? "กำลังส่งข้อมูล..." : "ยืนยันการนัดหมายหน้างาน"}
+                <Button variant="secondary" type="submit" className="w-100 rounded-pill fw-bold text-dark" disabled={isSubmitting}>
+                  {isSubmitting ? "กำลังส่ง..." : "ยืนยันการนัดหมายดูห้อง"}
                 </Button>
               </Form>
             </Tab>
+
+            {/* แท็บ 3: นัดทำสัญญาหน้างาน */}
+            <Tab eventKey="onsite_contract" title="✍️ นัดทำสัญญาหน้างาน">
+              <Form onSubmit={handleSubmitContract} className="mt-3">
+                <div className="alert alert-warning border-0 rounded-3 small text-dark">ตกลงเช่าห้องนี้ และขอนัดหมายเพื่อเข้ามาเซ็นสัญญา/ชำระเงินที่สำนักงาน</div>
+                <Form.Group className="mb-4">
+                  <Form.Label className="fw-bold">📅 เลือกวันและเวลาที่จะเข้ามาทำสัญญา</Form.Label>
+                  <Form.Control type="datetime-local" value={appointmentDate} onChange={(e) => setAppointmentDate(e.target.value)} required={contractMethod === 'onsite_contract'} />
+                </Form.Group>
+                <Button variant="warning" type="submit" className="w-100 rounded-pill fw-bold" disabled={isSubmitting}>
+                  {isSubmitting ? "กำลังส่ง..." : "ยืนยันนัดทำสัญญาหน้างาน"}
+                </Button>
+              </Form>
+            </Tab>
+
           </Tabs>
         </Modal.Body>
       </Modal>
