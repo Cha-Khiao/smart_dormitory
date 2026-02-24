@@ -18,16 +18,41 @@ export async function GET(request: Request) {
   }
 }
 
+// src/app/api/bills/route.ts
+
+// ... (ส่วน import และฟังก์ชัน GET ปล่อยไว้เหมือนเดิม) ...
+
+// 🌟 สร้างบิลใหม่ (อัปเกรดเกราะป้องกันบิลซ้ำ 100%)
 export async function POST(request: Request) {
   try {
     await connectDB();
     const body = await request.json();
+    
+    // 🛡️ ด่านตรวจเหล็กไหล: ค้นหาว่าในฐานข้อมูล มีบิลของ "ห้องนี้" ใน "เดือนนี้" หรือยัง?
+    const existingBill = await Bill.findOne({
+      roomNumber: body.roomNumber,
+      month: body.month
+    });
+
+    // 🚫 ถ้าเจอบิลเก่าอยู่แล้ว ให้เตะกลับทันที ห้ามสร้างใหม่เด็ดขาด!
+    if (existingBill) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `ระบบปฏิเสธการทำงาน: ห้อง ${body.roomNumber} มีบิลประจำเดือน "${body.month}" อยู่แล้วในระบบ` 
+      }, { status: 400 }); // แจ้งกลับไปว่า Bad Request (ทำรายการไม่ถูกต้อง)
+    }
+
+    // ✅ ถ้ารอดด่านตรวจมาได้ (ยังไม่มีบิล) ถึงจะยอมให้เซฟลงฐานข้อมูล
     const newBill = await Bill.create(body);
     return NextResponse.json({ success: true, data: newBill });
+    
   } catch (error) {
+    console.error("🔥 Error สร้างบิล:", error);
     return NextResponse.json({ success: false, error: 'สร้างบิลไม่สำเร็จ' }, { status: 500 });
   }
 }
+
+// ... (ฟังก์ชัน PATCH ปล่อยไว้เหมือนเดิม) ...
 
 export async function PATCH(request: Request) {
   try {
