@@ -1,23 +1,29 @@
 // src/app/api/bills/route.ts
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'; // 🌟 บังคับไม่ให้ Next.js จำข้อมูลเก่า
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Bill from '@/models/Bill';
 
+// 🌟 1. ดึงข้อมูลบิล (รองรับการกรองสถานะ paid)
 export async function GET(request: Request) {
   try {
     await connectDB();
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
-    
-    // ดึงบิลของลูกค้าคนนั้นๆ เรียงจากใหม่ไปเก่า
-    const bills = await Bill.find({ userId }).sort({ createdAt: -1 });
+    const status = searchParams.get('status');
+
+    let query: any = {};
+    if (userId) query.userId = userId;
+    if (status) query.status = status;
+
+    const bills = await Bill.find(query).sort({ updatedAt: -1 });
     return NextResponse.json({ success: true, data: bills });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'ดึงข้อมูลบิลไม่สำเร็จ' }, { status: 500 });
   }
 }
 
+// 2. สร้างบิลใหม่
 // src/app/api/bills/route.ts
 
 // ... (ส่วน import และฟังก์ชัน GET ปล่อยไว้เหมือนเดิม) ...
@@ -54,13 +60,19 @@ export async function POST(request: Request) {
 
 // ... (ฟังก์ชัน PATCH ปล่อยไว้เหมือนเดิม) ...
 
+// 🌟 3. อัปเดตบิล (เพิ่มให้รองรับการเซฟ ocrText)
 export async function PATCH(request: Request) {
   try {
     await connectDB();
-    const { id, status, paymentMethod, slipUrl } = await request.json();
-    const updatedBill = await Bill.findByIdAndUpdate(
-      id, { status, paymentMethod, slipUrl }, { new: true }
-    );
+    const { id, status, paymentMethod, slipUrl, ocrText } = await request.json();
+    
+    // จัดกลุ่มข้อมูลที่จะอัปเดต
+    const updateData: any = { status };
+    if (paymentMethod !== undefined) updateData.paymentMethod = paymentMethod;
+    if (slipUrl !== undefined) updateData.slipUrl = slipUrl;
+    if (ocrText !== undefined) updateData.ocrText = ocrText; // รับค่าข้อความที่สแกนได้
+
+    const updatedBill = await Bill.findByIdAndUpdate(id, updateData, { new: true });
     return NextResponse.json({ success: true, data: updatedBill });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'อัปเดตการชำระเงินไม่สำเร็จ' }, { status: 500 });
