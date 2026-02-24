@@ -1,247 +1,224 @@
 // src/app/(client)/rooms/[id]/page.tsx
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useSession } from "next-auth/react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import toast from "react-hot-toast";
-import { Modal, Button, Form, Tabs, Tab, Carousel } from "react-bootstrap";
-
-const generateRoomImages = (roomId: string | string[], count: number = 5) => {
-  if (!roomId) return [];
-  const idStr = Array.isArray(roomId) ? roomId[0] : roomId;
-  let seed = 0;
-  for (let i = 0; i < idStr.length; i++) seed += idStr.charCodeAt(i);
-  return Array.from({ length: count }, (_, i) => `https://picsum.photos/seed/${seed + i}/800/500`);
-};
+import Link from "next/link";
+import { Modal, Form, Button } from "react-bootstrap";
 
 export default function RoomDetailsPage() {
-  const { data: session, status } = useSession();
-  const params = useParams();
+  const { id } = useParams();
   const router = useRouter();
-  const roomId = params.id as string;
+  const { data: session, status } = useSession();
 
   const [room, setRoom] = useState<any>(null);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [booking, setBooking] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [inputText, setInputText] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [showModal, setShowModal] = useState(false);
-  const [contractMethod, setContractMethod] = useState("online");
-  const [appointmentDate, setAppointmentDate] = useState("");
+  // ==========================================
+  // 🌟 State สำหรับระบบขอจองห้องพัก
+  // ==========================================
+  const [showBookingModal, setShowBookingModal] = useState(false);
   const [moveInDate, setMoveInDate] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
 
-  // 🌟 State สำหรับเปิด/ปิด QR Code LINE ในหน้านี้
-  const [showQR, setShowQR] = useState(false);
-
-  const carouselImages = useMemo(() => generateRoomImages(roomId, 5), [roomId]);
-
+  // ดึงข้อมูลรายละเอียดห้องพัก
   useEffect(() => {
     const fetchRoom = async () => {
       try {
-        const res = await fetch(`/api/rooms/${roomId}`);
+        const res = await fetch(`/api/rooms/${id}`);
         const json = await res.json();
-        if (json.success) setRoom(json.data);
+        if (json.success) {
+          setRoom(json.data);
+        } else {
+          toast.error("ไม่พบข้อมูลห้องพัก");
+          router.push("/");
+        }
       } catch (error) {
-        toast.error("ดึงข้อมูลห้องไม่สำเร็จ");
+        toast.error("เกิดข้อผิดพลาดในการดึงข้อมูล");
+      } finally {
+        setIsLoading(false);
       }
     };
-    if (roomId) fetchRoom();
-  }, [roomId]);
+    if (id) fetchRoom();
+  }, [id, router]);
 
-  useEffect(() => {
-    if (!isChatOpen || !booking) return;
-    const fetchMessages = async () => {
-      try {
-        const res = await fetch(`/api/messages?bookingId=${booking._id}&t=${new Date().getTime()}`);
-        const json = await res.json();
-        if (json.success) setMessages(json.data);
-      } catch (error) {
-        console.error("Failed to fetch messages");
-      }
-    };
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, [isChatOpen, booking]);
+  // ==========================================
+  // 🌟 ฟังก์ชันอัปโหลดเอกสารไป Cloudinary
+  // ==========================================
+  const uploadToCloudinary = async (file: File) => {
+    // 🚨 อย่าลืมเปลี่ยน 2 บรรทัดนี้ เป็นของ Cloudinary ของคุณจริงๆ
+    const CLOUD_NAME = "dosnpexmy"; 
+    const UPLOAD_PRESET = "smart-dormitory"; 
 
-  useEffect(() => {
-    if (isChatOpen) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isChatOpen]);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", UPLOAD_PRESET);
 
-  const handleOpenChat = async () => {
-    if (status === "unauthenticated") {
-      toast.error("กรุณาเข้าสู่ระบบก่อนสอบถามข้อมูล");
-      router.push("/login");
-      return;
-    }
     try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { 
+        method: "POST", 
+        body: formData 
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      return data.secure_url; // คืนค่าลิงก์รูปภาพ
+    } catch (error) {
+      console.error("Cloudinary Error:", error);
+      return null;
+    }
+  };
+
+  // ==========================================
+  // 🌟 ฟังก์ชันกดยืนยันการจอง (ส่งเอกสารเข้าแชท)
+  // ==========================================
+  const handleBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session?.user) return toast.error("กรุณาเข้าสู่ระบบก่อนทำรายการ");
+    if (!moveInDate) return toast.error("กรุณาเลือกวันที่คาดว่าจะเข้าพัก");
+    if (!documentFile) return toast.error("กรุณาแนบสำเนาบัตรประชาชน หรือเอกสารยืนยันตัวตน!");
+
+    setIsSubmittingBooking(true);
+    const toastId = toast.loading("กำลังอัปโหลดเอกสาร...");
+
+    try {
+      // 1. อัปโหลดรูปบัตรประชาชนขึ้น Cloudinary
+      const documentUrl = await uploadToCloudinary(documentFile);
+      if (!documentUrl) {
+        toast.error("อัปโหลดเอกสารไม่สำเร็จ", { id: toastId });
+        setIsSubmittingBooking(false);
+        return;
+      }
+
+      // 2. สร้างคำขอจองห้องพัก
+      toast.loading("กำลังส่งคำขอจอง...", { id: toastId });
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: (session?.user as any).id,
-          username: session?.user?.name || "ลูกค้า",
           roomId: room._id,
           roomNumber: room.roomNumber,
+          userId: (session.user as any).id,
+          username: session.user.name,
+          status: "pending_approval",
+          moveInDate: moveInDate, // ส่งวันที่เข้าพักไปด้วย
         }),
       });
+
       const json = await res.json();
-      if (json.success) {
-        setBooking(json.data);
-        setIsChatOpen(true);
+
+      if (res.ok) {
+        // 🌟 3. ส่งรูปเอกสารเข้าแชทแอดมินทันที เป็นข้อความเปิดบทสนทนา
+        await fetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookingId: json.data._id, // ใช้ ID การจองที่เพิ่งสร้างเสร็จ
+            senderId: (session.user as any).id,
+            senderName: session.user.name,
+            senderRole: "customer",
+            text: `📝 ส่งคำขอจองห้องพัก ${room.roomNumber} (คาดว่าจะเข้าพักวันที่: ${new Date(moveInDate).toLocaleDateString('th-TH')}) \nแนบสำเนาบัตรประชาชนเพื่อทำสัญญาเช่า: ${documentUrl}`
+          }),
+        });
+
+        toast.success("ส่งคำขอจองเรียบร้อย! กรุณารอแอดมินตรวจสอบเอกสารและตอบกลับ", { id: toastId });
+        setShowBookingModal(false);
+        setRoom({ ...room, status: 'pending' }); // อัปเดต UI ชั่วคราวว่าห้องไม่ว่างแล้ว
+        router.push("/my-room"); // เด้งไปหน้าห้องพักของฉัน เพื่อรอคุยกับแอดมิน
       } else {
-        toast.error(json.error || "ไม่สามารถเปิดแชทได้");
+        throw new Error(json.error || "จองไม่สำเร็จ");
       }
     } catch (error) {
-      toast.error("ระบบมีปัญหา กรุณาลองใหม่");
-    }
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputText.trim() || !booking) return;
-    const newMessage = {
-      bookingId: booking._id, senderId: (session?.user as any).id, senderName: session?.user?.name || "ลูกค้า", senderRole: "customer", text: inputText,
-    };
-    setMessages((prev) => [...prev, { ...newMessage, createdAt: new Date() }]);
-    setInputText("");
-    await fetch("/api/messages", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newMessage),
-    });
-  };
-
-  const handleSubmitContract = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    const toastId = toast.loading("กำลังส่งข้อมูล...");
-    try {
-      let payload: any = { id: booking._id, roomId: room._id };
-      let systemMessage = "";
-      if (contractMethod === "online") {
-        if (!moveInDate) throw new Error("กรุณาเลือกวันย้ายเข้า");
-        payload = { ...payload, status: "pending_approval", contractMethod: "online", moveInDate };
-        systemMessage = `📄 ส่งเอกสารทำสัญญาออนไลน์ (ย้ายเข้า: ${new Date(moveInDate).toLocaleDateString('th-TH')})`;
-      } else {
-        if (!appointmentDate) throw new Error("กรุณาเลือกวันนัดหมาย");
-        payload = { ...payload, status: "appointment", contractMethod, appointmentDate };
-        systemMessage = `🗓️ ขอนัดหมาย${contractMethod === "view_room" ? "ดูห้อง" : "ทำสัญญา"} วันที่: ${new Date(appointmentDate).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })} น.`;
-      }
-      const res = await fetch("/api/bookings", {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (json.success) {
-        toast.success("ดำเนินการสำเร็จ!", { id: toastId });
-        setShowModal(false);
-        await fetch("/api/messages", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bookingId: booking._id, senderId: (session?.user as any).id, senderName: "System", senderRole: "customer", text: systemMessage }),
-        });
-        setBooking(json.data);
-      } else {
-        throw new Error(json.error);
-      }
-    } catch (error: any) {
-      toast.error(error.message || "เกิดข้อผิดพลาด", { id: toastId });
+      toast.error("เกิดข้อผิดพลาดในการจอง", { id: toastId });
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingBooking(false);
     }
   };
 
-  if (!room) return <div className="text-center mt-5"><div className="spinner-border text-primary"></div></div>;
+  if (isLoading) return <div className="text-center mt-5"><div className="spinner-border text-primary"></div></div>;
+  if (!room) return <div className="text-center mt-5 text-body-secondary">ไม่พบข้อมูลห้องพัก</div>;
 
   return (
     <div className="container py-5 position-relative">
       
-      {/* 🌟 ปุ่มย้อนกลับแบบมินิมอล */}
-      <div className="row justify-content-center mb-3">
+      {/* 🌟 ปุ่มย้อนกลับที่จัดวางอย่างเหมาะสม (รองรับ Dark Mode) */}
+      <div className="row justify-content-center mb-4">
         <div className="col-lg-10">
-          <button 
-            onClick={() => router.back()} 
-            className="btn btn-link text-decoration-none text-muted px-0 fw-bold d-flex align-items-center gap-2 hover-opacity"
+          <Link 
+            href="/" 
+            className="btn btn-sm btn-outline-secondary rounded-pill fw-bold px-4 shadow-sm d-inline-flex align-items-center gap-2 bg-body text-body transition-all"
           >
-            <span className="fs-5">←</span> ย้อนกลับไปหน้าแรก
-          </button>
+            <span>&larr;</span> ย้อนกลับไปดูห้องทั้งหมด
+          </Link>
         </div>
       </div>
       
+      {/* 🌟 การ์ดแสดงรายละเอียดห้อง (ปรับ CSS เป็น Dark Mode Semantic 100%) */}
       <div className="row justify-content-center">
         <div className="col-lg-10">
-          <div className="card border-0 shadow-lg rounded-4 overflow-hidden">
+          <div className="card bg-body text-body border-secondary-subtle shadow-sm rounded-4 overflow-hidden">
             <div className="row g-0">
               
-              <div className="col-md-7 bg-light p-0">
-                <Carousel fade interval={3000} indicators={false} className="h-100">
-                  {carouselImages.map((imgUrl, index) => (
-                    <Carousel.Item key={index} className="h-100">
-                      <div style={{ height: "500px" }}>
-                        <img src={imgUrl} alt={`Slide ${index + 1}`} className="d-block w-100 h-100 object-fit-cover" />
-                      </div>
-                    </Carousel.Item>
-                  ))}
-                </Carousel>
+              {/* ฝั่งรูปภาพห้อง */}
+              <div className="col-md-6 bg-body-tertiary">
+                <img 
+                  src={room.image || "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?q=80&w=800&auto=format&fit=crop"} 
+                  alt={`ห้อง ${room.roomNumber}`} 
+                  className="img-fluid h-100 w-100" 
+                  style={{ objectFit: "cover", minHeight: "350px" }}
+                />
               </div>
               
-              <div className="col-md-5 p-5 d-flex flex-column justify-content-center bg-white">
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                  <h1 className="fw-bold text-primary mb-0">ห้อง {room.roomNumber}</h1>
-                  <span className={`badge fs-6 ${room.status === 'available' ? 'bg-success' : 'bg-danger'}`}>
-                    {room.status === 'available' ? 'ว่างพร้อมอยู่' : 'มีผู้เช่าแล้ว'}
+              {/* ฝั่งข้อมูลห้อง */}
+              <div className="col-md-6 p-4 p-md-5 d-flex flex-column">
+                <div className="d-flex justify-content-between align-items-start mb-3">
+                  <h2 className="fw-bold mb-0 text-primary">ห้อง {room.roomNumber}</h2>
+                  <span className={`badge px-3 py-2 rounded-pill fs-6 shadow-sm ${room.status === 'available' ? 'bg-success' : 'bg-secondary'}`}>
+                    {room.status === 'available' ? 'ว่างพร้อมอยู่' : 'ไม่ว่าง'}
                   </span>
                 </div>
                 
-                <h3 className="text-danger fw-bold mb-4">฿{room.price?.toLocaleString()} <span className="fs-6 text-muted fw-normal">/ เดือน</span></h3>
-                
-                <h5 className="fw-bold mb-3">รายละเอียด</h5>
-                <p className="text-muted mb-4" style={{ lineHeight: "1.8" }}>
-                  {room.description || "ห้องพักสะอาด ปลอดภัย เดินทางสะดวก ใกล้แหล่งของกินและสถานศึกษา พร้อมเข้าอยู่ได้ทันที"}
-                </p>
+                <h3 className="fw-bold text-danger mb-4">
+                  {room.price.toLocaleString()} <span className="fs-6 text-body-secondary fw-normal">บาท / เดือน</span>
+                </h3>
 
-                <div className="row g-3 mb-4">
-                  <div className="col-6"><div className="p-3 bg-light rounded-3 text-center fw-bold" style={{fontSize: '0.9rem'}}>❄️ เครื่องปรับอากาศ</div></div>
-                  <div className="col-6"><div className="p-3 bg-light rounded-3 text-center fw-bold" style={{fontSize: '0.9rem'}}>🛏️ เฟอร์นิเจอร์ครบ</div></div>
-                  <div className="col-6"><div className="p-3 bg-light rounded-3 text-center fw-bold" style={{fontSize: '0.9rem'}}>🚿 เครื่องทำน้ำอุ่น</div></div>
-                  <div className="col-6"><div className="p-3 bg-light rounded-3 text-center fw-bold" style={{fontSize: '0.9rem'}}>📶 ฟรี Wi-Fi</div></div>
+                <div className="mb-4">
+                  <h6 className="fw-bold text-body">รายละเอียดห้องพัก:</h6>
+                  <p className="text-body-secondary lh-lg">{room.description || "ห้องพักสะอาด กว้างขวาง เฟอร์นิเจอร์ครบจบในที่เดียว หิ้วกระเป๋าใบเดียวเข้าอยู่ได้เลย"}</p>
                 </div>
 
-                {room.status === 'available' && (
-                  status === "unauthenticated" ? (
-                    <button onClick={() => router.push("/login")} className="btn btn-outline-primary btn-lg rounded-pill fw-bold w-100 py-3 mb-3">
-                      🔒 เข้าสู่ระบบเพื่อสอบถามข้อมูล
-                    </button>
-                  ) : (
-                    <button onClick={handleOpenChat} className="btn btn-primary btn-lg rounded-pill fw-bold shadow-sm w-100 py-3 mb-3 pulse-animation">
-                      💬 สนใจ / สอบถามข้อมูลเพิ่มเติม
-                    </button>
-                  )
-                )}
-
-                {/* ======================================================= */}
-                {/* 🌟 ช่องทางการติดต่ออื่นๆ (แสดงอยู่ใต้ปุ่มจอง/แชทเสมอ) */}
-                {/* ======================================================= */}
-                <div className="mt-2 pt-3 border-top">
-                  <div className="text-muted small mb-3 text-center fw-bold">หรือติดต่อแอดมินโดยตรงผ่านช่องทางอื่น</div>
-                  <div className="row g-2">
-                    <div className="col-4">
-                      <a href="tel:0812345678" className="btn btn-light w-100 rounded-3 border fw-bold text-dark d-flex flex-column align-items-center py-2" style={{fontSize: "0.8rem"}}>
-                        <span className="fs-5 mb-1">📞</span> โทร
-                      </a>
-                    </div>
-                    <div className="col-4">
-                      <button onClick={() => setShowQR(true)} className="btn btn-success w-100 rounded-3 fw-bold border-0 shadow-sm d-flex flex-column align-items-center py-2" style={{fontSize: "0.8rem"}}>
-                        <span className="fs-5 mb-1">💬</span> LINE
-                      </button>
-                    </div>
-                    <div className="col-4">
-                      <a href="https://m.me/yourfacebookpage" target="_blank" className="btn btn-primary w-100 rounded-3 fw-bold border-0 shadow-sm d-flex flex-column align-items-center py-2" style={{fontSize: "0.8rem"}}>
-                        <span className="fs-5 mb-1">📘</span> FB Inbox
-                      </a>
-                    </div>
+                <div className="mb-4">
+                  <h6 className="fw-bold text-body mb-3">สิ่งอำนวยความสะดวก:</h6>
+                  <div className="d-flex flex-wrap gap-2">
+                    <span className="badge bg-body-tertiary text-body border border-secondary-subtle px-3 py-2 rounded-pill">🛏️ เตียง 5 ฟุต</span>
+                    <span className="badge bg-body-tertiary text-body border border-secondary-subtle px-3 py-2 rounded-pill">❄️ เครื่องปรับอากาศ</span>
+                    <span className="badge bg-body-tertiary text-body border border-secondary-subtle px-3 py-2 rounded-pill">📺 ทีวี</span>
+                    <span className="badge bg-body-tertiary text-body border border-secondary-subtle px-3 py-2 rounded-pill">🚿 เครื่องทำน้ำอุ่น</span>
+                    <span className="badge bg-body-tertiary text-body border border-secondary-subtle px-3 py-2 rounded-pill">🛜 ฟรี Wi-Fi</span>
                   </div>
+                </div>
+
+                <div className="mt-auto pt-3 border-top border-secondary-subtle">
+                  {room.status === 'available' ? (
+                    status === "authenticated" ? (
+                      <button 
+                        className="btn btn-primary w-100 rounded-pill fw-bold py-3 shadow-sm fs-5 transition-all" 
+                        onClick={() => setShowBookingModal(true)}
+                      >
+                        📝 ขอจองห้องพักนี้
+                      </button>
+                    ) : (
+                      <Link href="/login" className="btn btn-outline-primary w-100 rounded-pill fw-bold py-3 shadow-sm transition-all">
+                        🔒 เข้าสู่ระบบเพื่อทำจอง
+                      </Link>
+                    )
+                  ) : (
+                    <button className="btn btn-secondary w-100 rounded-pill fw-bold py-3 opacity-50" disabled>
+                      ❌ ห้องพักนี้มีผู้เช่าแล้ว
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -250,112 +227,82 @@ export default function RoomDetailsPage() {
         </div>
       </div>
 
-      {!isChatOpen && status === "authenticated" && (
-        <button 
-          onClick={handleOpenChat}
-          className="btn btn-primary rounded-circle shadow-lg d-flex align-items-center justify-content-center pulse-animation"
-          style={{ position: "fixed", bottom: "30px", right: "30px", width: "65px", height: "65px", zIndex: 1000, fontSize: "28px" }}
-        >
-          💬
-        </button>
-      )}
-
-      {isChatOpen && (
-        <div 
-          className="card shadow-lg border-0 rounded-4 d-flex flex-column slide-in-bottom"
-          style={{ position: "fixed", bottom: "30px", right: "30px", width: "360px", height: "500px", zIndex: 1050, overflow: "hidden" }}
-        >
-          <div className="card-header bg-primary text-white p-3 d-flex justify-content-between align-items-center border-0">
-            <h6 className="mb-0 fw-bold">💬 สอบถามห้อง {room.roomNumber}</h6>
-            <button onClick={() => setIsChatOpen(false)} className="btn btn-sm btn-light text-primary rounded-circle d-flex align-items-center justify-content-center" style={{width: "28px", height: "28px", padding: 0}}>✖</button>
-          </div>
-
-          {booking?.status !== 'approved' && booking?.status !== 'rejected' && (
-            <div className="bg-light p-2 text-center border-bottom">
-              <button className="btn btn-sm btn-warning fw-bold rounded-pill shadow-sm px-4" onClick={() => setShowModal(true)}>
-                📝 ทำสัญญา / นัดดูห้อง
-              </button>
-            </div>
-          )}
-
-          <div className="card-body p-3 overflow-auto bg-body-tertiary d-flex flex-column gap-3" style={{ flexGrow: 1 }}>
-            <div className="text-center text-muted small mb-2 opacity-50">--- เริ่มการสนทนา ---</div>
-            {messages.map((msg, idx) => {
-              const isMe = msg.senderRole === "customer";
-              return (
-                <div key={idx} className={`d-flex flex-column ${isMe ? 'align-items-end' : 'align-items-start'}`}>
-                  <div className="small text-muted mb-1 px-1" style={{fontSize: "0.65rem"}}>{msg.senderName}</div>
-                  <div className={`px-3 py-2 rounded-4 shadow-sm ${isMe ? 'bg-primary text-white' : 'bg-white text-dark border'}`}
-                       style={{ maxWidth: "85%", wordBreak: "break-word", borderBottomRightRadius: isMe ? "4px" : "16px", borderBottomLeftRadius: !isMe ? "4px" : "16px", fontSize: "0.9rem" }}>
-                    {msg.text}
-                  </div>
-                  <div className="text-muted mt-1" style={{ fontSize: "0.6rem" }}>
-                    {new Date(msg.createdAt).toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})}
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div className="card-footer bg-white p-2 border-top">
-            <form onSubmit={handleSendMessage} className="d-flex gap-2">
-              <input type="text" className="form-control rounded-pill px-3 bg-light border-0" placeholder="พิมพ์ข้อความ..." value={inputText} onChange={(e) => setInputText(e.target.value)} disabled={booking?.status === 'approved' || booking?.status === 'rejected'} />
-              <button type="submit" className="btn btn-primary rounded-circle d-flex align-items-center justify-content-center" style={{ width: "40px", height: "40px" }} disabled={!inputText.trim()}>➤</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal ทำสัญญา/นัดหมาย */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} centered size="lg">
-        {/* ... (โค้ด Modal ทำสัญญาเหมือนเดิม) ... */}
-        <Modal.Header closeButton className="border-0 pb-0">
-          <Modal.Title className="fw-bold text-primary px-2">ดำเนินการห้อง {room.roomNumber}</Modal.Title>
+      {/* ======================================================= */}
+      {/* 🌟 Modal: ฟอร์มขอจองห้องพัก (ปรับ UI รองรับ Dark Mode) */}
+      {/* ======================================================= */}
+      <Modal show={showBookingModal} onHide={() => setShowBookingModal(false)} centered backdrop="static" size="lg">
+        {/* ให้ Modal เปลี่ยนสีตามโหมดด้วยคลาส bg-body text-body */}
+        <Modal.Header closeButton className="border-secondary-subtle bg-body text-body pb-0">
+          <Modal.Title className="fw-bold text-primary d-flex align-items-center gap-2">
+            <span className="fs-3">📝</span> ยืนยันคำขอจอง ห้อง {room?.roomNumber}
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body className="p-4">
-          <Tabs activeKey={contractMethod} onSelect={(k) => setContractMethod(k || 'online')} className="mb-4 nav-fill">
+        <Modal.Body className="bg-body text-body p-4">
+          <Form onSubmit={handleBookingSubmit}>
             
-            <Tab eventKey="online" title="🌐 ทำสัญญาออนไลน์">
-              <Form onSubmit={handleSubmitContract} className="mt-3">
-                <div className="alert alert-info border-0 rounded-3 small">ระบบจะให้กรอกเอกสารออนไลน์ (ย่อไว้เพื่อทดสอบ)</div>
-                <Form.Group className="mb-4">
-                  <Form.Label className="fw-bold">📅 วันที่ต้องการย้ายเข้า</Form.Label>
-                  <Form.Control type="date" value={moveInDate} onChange={(e) => setMoveInDate(e.target.value)} required={contractMethod === 'online'} />
-                </Form.Group>
-                <Button variant="primary" type="submit" className="w-100 rounded-pill fw-bold" disabled={isSubmitting}>
-                  {isSubmitting ? "กำลังส่ง..." : "ส่งคำขอทำสัญญา"}
-                </Button>
-              </Form>
-            </Tab>
+            {/* 1. ข้อมูลวันที่ */}
+            <Form.Group className="mb-4">
+              <Form.Label className="fw-bold text-body">📅 วันที่คาดว่าจะเข้าพัก</Form.Label>
+              <Form.Control 
+                type="date" 
+                required 
+                className="bg-body border-secondary-subtle text-body py-2"
+                value={moveInDate} 
+                onChange={(e) => setMoveInDate(e.target.value)} 
+                min={new Date().toISOString().split('T')[0]} // ห้ามเลือกย้อนหลัง
+              />
+            </Form.Group>
 
-            <Tab eventKey="view_room" title="👀 นัดดูห้องพัก">
-              <Form onSubmit={handleSubmitContract} className="mt-3">
-                <Form.Group className="mb-4">
-                  <Form.Label className="fw-bold">📅 เลือกวันและเวลาที่จะเข้ามาดูห้อง</Form.Label>
-                  <Form.Control type="datetime-local" value={appointmentDate} onChange={(e) => setAppointmentDate(e.target.value)} required={contractMethod === 'view_room'} />
-                </Form.Group>
-                <Button variant="secondary" type="submit" className="w-100 rounded-pill fw-bold text-dark" disabled={isSubmitting}>
-                  {isSubmitting ? "กำลังส่ง..." : "ยืนยันการนัดหมาย"}
-                </Button>
-              </Form>
-            </Tab>
-          </Tabs>
-        </Modal.Body>
-      </Modal>
+            {/* 🌟 2. อัปโหลดเอกสาร (ฟีเจอร์ใหม่สุดไฮเทค) */}
+            <div className="mb-4 p-4 bg-body-tertiary rounded-4 border border-secondary-subtle">
+              <Form.Label className="fw-bold text-primary mb-2 d-flex align-items-center gap-2">
+                <span>📄</span> เอกสารประกอบการจอง (บังคับ)
+              </Form.Label>
+              <p className="small text-body-secondary mb-3 lh-base">
+                กรุณาแนบภาพถ่าย <strong>สำเนาบัตรประชาชน หรือ พาสปอร์ต</strong> (เซ็นรับรองสำเนาถูกต้อง) เพื่อใช้เป็นหลักฐานยืนยันตัวตนในการทำสัญญาเช่า
+              </p>
+              
+              <Form.Control 
+                type="file" 
+                accept="image/*"
+                required
+                className="bg-body border-secondary-subtle text-body py-2"
+                onChange={(e: any) => setDocumentFile(e.target.files?.[0] || null)}
+              />
+              
+              {/* พรีวิวรูปบัตรประชาชนให้ดูความเรียบร้อยก่อนส่ง */}
+              {documentFile && (
+                <div className="mt-3 text-center bg-body p-2 rounded-3 border border-secondary-subtle">
+                  <span className="d-block small text-success fw-bold mb-2">✅ ไฟล์พร้อมส่ง</span>
+                  <img 
+                    src={URL.createObjectURL(documentFile)} 
+                    alt="ID Card Preview" 
+                    className="img-fluid rounded-3 shadow-sm" 
+                    style={{ maxHeight: "200px", objectFit: "contain" }} 
+                  />
+                </div>
+              )}
+            </div>
 
-      {/* 🌟 Modal สำหรับแสดง QR Code LINE */}
-      <Modal show={showQR} onHide={() => setShowQR(false)} centered size="sm">
-        <Modal.Header closeButton className="border-0 pb-0">
-          <Modal.Title className="fw-bold text-success w-100 text-center">แอด LINE ของเรา</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="text-center pb-4">
-          <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg" alt="LINE QR Code" className="img-fluid mb-3 rounded-4 shadow-sm" style={{ width: "200px" }} />
-          <p className="text-muted small mb-0">สแกนคิวอาร์โค้ดนี้เพื่อติดต่อแอดมิน</p>
-          <p className="fw-bold fs-5 mt-2 text-dark">ID: @yourdorm</p>
-          <a href="https://line.me/ti/p/~@yourdorm" target="_blank" className="btn btn-success rounded-pill w-100 fw-bold mt-2">
-            หรือคลิกเพื่อแอดไลน์
-          </a>
+            {/* แจ้งเตือนข้อตกลง */}
+            <div className="alert alert-info border-0 rounded-4 small text-body-secondary d-flex gap-2">
+              <span className="fs-5">💡</span>
+              <div>
+                เมื่อกดยืนยัน ระบบจะส่งเอกสารของคุณไปให้แอดมินตรวจสอบผ่าน <strong>ระบบแชท</strong> 
+                คุณสามารถเข้าไปติดตามสถานะการจองและพูดคุยกับแอดมินได้ที่เมนู <strong>"ห้องพักของฉัน"</strong>
+              </div>
+            </div>
+
+            <div className="d-flex gap-2 mt-4">
+              <Button variant="light" className="w-50 rounded-pill fw-bold border border-secondary-subtle bg-body text-body transition-all" onClick={() => setShowBookingModal(false)}>
+                ยกเลิก
+              </Button>
+              <Button variant="primary" type="submit" className="w-50 rounded-pill fw-bold shadow-sm transition-all" disabled={isSubmittingBooking || !documentFile}>
+                {isSubmittingBooking ? "⏳ กำลังอัปโหลดข้อมูล..." : "🚀 ยืนยันการขอจอง"}
+              </Button>
+            </div>
+
+          </Form>
         </Modal.Body>
       </Modal>
 
