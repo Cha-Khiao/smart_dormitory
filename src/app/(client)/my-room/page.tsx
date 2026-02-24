@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import Tesseract from "tesseract.js";
+import ResidentChat from "@/components/ResidentChat";
 
 // 🌟 ฟังก์ชันอัปโหลดสลิปไป Cloudinary (อย่าลืมเปลี่ยน Upload Preset ของคุณ)
 // 🌟 ฟังก์ชันอัปโหลดสลิปไป Cloudinary (เวอร์ชันป้องกันบั๊ก 100%)
@@ -215,6 +216,8 @@ export default function MyRoomPage() {
 
         </div>
       </div>
+      {/* 🌟 ฝังระบบแชทลอยตัวไว้ล่างสุด */}
+      <ResidentChat />
     </div>
   );
 }
