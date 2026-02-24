@@ -205,10 +205,23 @@ export default function BillingDashboard() {
     });
   };
 
+  // 🌟 ฟังก์ชันเปิดหน้าต่างสร้างบิล (แก้ไขการดึงราคาห้องจริง)
   const openBillModal = (tenant: any) => {
     setSelectedTenant(tenant);
-    // เซ็ตค่า Form เตรียมไว้ และล็อกค่าเดือนให้ตรงกับ currentCycleMonth เสมอ
-    setBillForm({ month: currentCycleMonth, room: 4000, water: 0, electric: 0, other: 0 });
+    
+    // 💡 ดึงราคาห้องจากข้อมูลลูกค้า (รองรับหลายรูปแบบตัวแปร เผื่อ API ของคุณใช้ชื่อต่างกัน)
+    // ถ้าหาค่าไม่เจอจริงๆ ระบบจะปรับเป็น 0 บาทแทนการล็อกเป้า 4000 บาท เพื่อให้แอดมินพิมพ์เองได้
+    const actualRoomPrice = tenant.price || tenant.roomPrice || tenant.room?.price || 0;
+
+    // เซ็ตค่าเริ่มต้นให้ฟอร์ม
+    setBillForm({ 
+      month: currentCycleMonth, 
+      room: actualRoomPrice, // 👈 เปลี่ยนจาก 4000 เป็นตัวแปรดึงราคาจริง
+      water: 0, 
+      electric: 0, 
+      other: 0 
+    });
+    
     setShowBillModal(true);
   };
 
@@ -216,17 +229,18 @@ export default function BillingDashboard() {
     e.preventDefault();
     if (!selectedTenant) return;
 
-    // 🌟 Check 2 ชั้น: ป้องกันการแฮกยิง API ซ้ำ
+    // Check ชั้นที่ 1 (ดักด้วยข้อมูลบนหน้าจอ)
     if (dbBilledRooms.includes(selectedTenant.roomNumber) || billedRooms.includes(selectedTenant.roomNumber)) {
-      toast.error(`ห้อง ${selectedTenant.roomNumber} ถูกออกบิลประจำเดือนนี้ไปแล้ว!`);
+      toast.error(`ห้อง ${selectedTenant.roomNumber} ถูกออกบิลไปแล้ว!`);
       setShowBillModal(false);
       return;
     }
 
     const total = Number(billForm.room) + Number(billForm.water) + Number(billForm.electric) + Number(billForm.other);
-    const toastId = toast.loading("กำลังส่งบิลให้ลูกค้า...");
+    const toastId = toast.loading("กำลังตรวจสอบและส่งบิล...");
 
     try {
+      // 1. ส่งข้อมูลไปที่หลังบ้าน
       const res = await fetch("/api/bills", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -237,7 +251,11 @@ export default function BillingDashboard() {
         })
       });
 
-      if (res.ok) {
+      // 🌟 2. แปลงคำตอบจาก API ก่อนเพื่อดูว่าสำเร็จหรือโดนด่า
+      const json = await res.json();
+
+      if (res.ok && json.success) {
+        // กรณีสำเร็จ: ส่งข้อความหาลูกค้า และปิดหน้าต่าง
         await fetch("/api/messages", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -245,14 +263,19 @@ export default function BillingDashboard() {
             text: `🧾 ออกบิลค่าเช่าเดือน ${billForm.month} เรียบร้อยแล้ว ยอดรวม: ${total.toLocaleString()} บาท (กรุณาชำระเงินที่เมนู "ห้องพักของฉัน")`
           })
         });
+        
         toast.success("ส่งบิลสำเร็จ!", { id: toastId });
         setShowBillModal(false);
+        setBilledRooms((prev) => [...prev, selectedTenant.roomNumber]); // อัปเดต UI
         
-        // อัปเดต UI ทันทีไม่ต้องรอรีเฟรช
-        setBilledRooms((prev) => [...prev, selectedTenant.roomNumber]);
+      } else {
+        // 🌟 3. กรณีล้มเหลว (เช่น บิลซ้ำซ้อน): สั่งให้มันโยน Error พร้อมข้อความจาก API 
+        throw new Error(json.error || "บันทึกบิลไม่สำเร็จ");
       }
-    } catch (error) {
-      toast.error("เกิดข้อผิดพลาดในการส่งบิล", { id: toastId });
+
+    } catch (error: any) {
+      // 🌟 4. ดักจับ Error ทั้งหมดที่นี่ ให้ Toast หยุดหมุนและแจ้งเตือนสีแดง
+      toast.error(error.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ", { id: toastId });
     }
   };
 
