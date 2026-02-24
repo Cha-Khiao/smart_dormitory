@@ -21,6 +21,7 @@
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.3",
     "react-hot-toast": "^2.6.0",
+    "recharts": "^3.7.0",
     "sass": "^1.97.3",
     "sweetalert2": "^11.26.20",
     "tesseract.js": "^7.0.0"
