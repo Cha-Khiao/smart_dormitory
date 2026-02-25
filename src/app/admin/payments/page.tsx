@@ -36,7 +36,7 @@ export default function AdminPaymentsPage() {
   // ==========================================
   useEffect(() => {
     const autoVerifySlip = async () => {
-      // ถ้าไม่มีสลิปที่เลือก หรือสลิปนี้เคยมี ocrText ที่สแกนเสร็จแล้ว ให้ข้ามไป
+      
       if (!selectedPayment || !selectedPayment.slipUrl || ocrText) return;
       
       setIsProcessing(true);
@@ -63,11 +63,11 @@ export default function AdminPaymentsPage() {
     };
 
     autoVerifySlip();
-  }, [selectedPayment]); // ทำงานอัตโนมัติทุกครั้งที่ selectedPayment เปลี่ยนค่า
+  }, [selectedPayment]); 
 
-  // เมื่อแอดมินคลิกเลือกสลิปจากตาราง (เคลียร์ค่าเก่าออกให้หมด)
+  
   const handleSelectSlip = (payment: any) => {
-    if (selectedPayment?._id === payment._id) return; // ถ้าคลิกอันเดิมไม่ต้องทำอะไร
+    if (selectedPayment?._id === payment._id) return; 
     setOcrText(""); 
     setExtractedAmount(null);
     setSelectedPayment(payment);
