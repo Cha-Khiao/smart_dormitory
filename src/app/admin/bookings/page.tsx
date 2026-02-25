@@ -71,7 +71,7 @@ export default function AdminInboxPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [selectedChat]); 
 
-  // 3. ฟังก์ชันแอดมินส่งข้อความ
+  
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !selectedChat) return;
@@ -93,13 +93,13 @@ export default function AdminInboxPage() {
       body: JSON.stringify(newMessage),
     });
     
-    // เลื่อนจอลงเวลาพิมพ์ข้อความใหม่
+    
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 100);
   };
 
-  // 4. ฟังก์ชันจัดการสถานะ (อนุมัติ / ปฏิเสธ / จบสัญญา)
+  
   const handleAction = (status: string) => {
     const actionText = status === 'approved' ? 'อนุมัติเข้าอยู่' : 'ปฏิเสธ/จบสัญญา';
     const confirmColor = status === 'approved' ? '#198754' : '#dc3545';
