@@ -1,8 +1,8 @@
-// src/app/layout.tsx
+
 import type { Metadata } from "next";
 import { Kanit } from "next/font/google";
 import "bootstrap/dist/css/bootstrap.min.css";
-import "./globals.css"; // ตอนนี้ไฟล์นี้ควรจะว่างเปล่าแล้ว
+import "./globals.css"; 
 import { ThemeProvider } from "@/components/ThemeProvider";
 import AuthProvider from "@/components/AuthProvider";
 import { Toaster } from "react-hot-toast";
