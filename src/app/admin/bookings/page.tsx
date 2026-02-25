@@ -18,7 +18,7 @@ export default function AdminInboxPage() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. ฟังก์ชันดึงข้อมูล
+  
   const fetchBookings = async () => {
     try {
       const res = await fetch(`/api/bookings?t=${new Date().getTime()}`);
@@ -35,7 +35,7 @@ export default function AdminInboxPage() {
     fetchBookings();
   }, []);
 
-  // 2. ดึงข้อความแชท + เคลียร์ตัวเลขแจ้งเตือน
+  
   useEffect(() => {
     if (!selectedChat) return;
 
