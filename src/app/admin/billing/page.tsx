@@ -28,14 +28,14 @@ export default function BillingDashboard() {
   const [isSystemUnlocked, setIsSystemUnlocked] = useState(false);
   const [manuallyUnlockedRooms, setManuallyUnlockedRooms] = useState<string[]>([]);
   
-  // 🌟 State ใหม่: เดือนรอบบิลปัจจุบัน (ดึงตามเวลาเครื่อง)
+  
   const currentCycleMonth = new Date().toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
   
-  // 🌟 State ใหม่: เก็บข้อมูลห้องที่ถูกออกบิลไปแล้ว "ในฐานข้อมูล" ประจำเดือนนี้
+  
   const [dbBilledRooms, setDbBilledRooms] = useState<string[]>([]);
   const [billedRooms, setBilledRooms] = useState<string[]>([]); // สำหรับอัปเดต UI ทันทีตอนกด
 
-  // ระบบแบ่งหน้า (Pagination)
+  
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -55,10 +55,10 @@ export default function BillingDashboard() {
         endDateTime: getLocalISOString(next5Days)
       });
     }
-    fetchSystemData(); // โหลดทั้งลูกค้า และ ประวัติบิล
+    fetchSystemData(); 
   }, []);
 
-  // 🌟 ฟังก์ชันโหลดข้อมูลอัจฉริยะ (ดึงลูกค้า + เช็คบิลซ้ำ)
+  
   const fetchSystemData = async () => {
     try {
       // 1. ดึงรายชื่อลูกบ้านทั้งหมด
