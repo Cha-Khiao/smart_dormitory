@@ -73,7 +73,7 @@ export default function AdminPaymentsPage() {
     setSelectedPayment(payment);
   };
 
-  // ✅ อนุมัติการชำระเงิน
+  
   const handleApprove = async () => {
     Swal.fire({
       title: "ยืนยันยอดถูกต้อง?",
@@ -106,7 +106,7 @@ export default function AdminPaymentsPage() {
     });
   };
 
-  // ❌ ปฏิเสธสลิป
+  
   const handleReject = async () => {
     Swal.fire({
       title: "ปฏิเสธสลิป?",
