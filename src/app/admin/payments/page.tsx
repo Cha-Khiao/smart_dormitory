@@ -1,4 +1,4 @@
-// src/app/admin/payments/page.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -12,7 +12,7 @@ export default function AdminPaymentsPage() {
   const [payments, setPayments] = useState<any[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<any>(null);
   
-  // State สำหรับ OCR
+  
   const [ocrText, setOcrText] = useState<string>("");
   const [extractedAmount, setExtractedAmount] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
