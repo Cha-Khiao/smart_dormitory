@@ -153,7 +153,7 @@ export default function AdminInboxPage() {
     });
   };
 
-  // 5. จัดกลุ่มตามห้องพัก
+  
   const groupedBookings = bookings.reduce((groups: any, booking: any) => {
     const room = booking.roomNumber || "ไม่ระบุ"; 
     if (!groups[room]) groups[room] = { list: [], unreadCustomers: 0 };
@@ -172,7 +172,7 @@ export default function AdminInboxPage() {
     return new Date(dateString).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // ฟังก์ชันแปลงลิงก์เป็นรูปภาพ
+  
   const renderMessageContent = (text: string, isBubbleDark: boolean) => {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
