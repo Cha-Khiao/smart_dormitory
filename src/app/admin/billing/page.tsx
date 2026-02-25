@@ -17,12 +17,12 @@ export default function BillingDashboard() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // การตั้งค่าระบบ
+  
   const [billingConfig, setBillingConfig] = useState({ startDateTime: "", endDateTime: "" });
   const [tempConfig, setTempConfig] = useState({ startDateTime: "", endDateTime: "" });
   const [showConfigModal, setShowConfigModal] = useState(false);
 
-  // ระบบตั้งเวลา 
+   
   const [timerState, setTimerState] = useState<"WAITING" | "OPEN" | "ENDED">("WAITING");
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [isSystemUnlocked, setIsSystemUnlocked] = useState(false);
